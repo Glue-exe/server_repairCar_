@@ -18,7 +18,7 @@ module.exports = {
                 ORDER BY month_year ASC;
             `;
 
-            const rows = await conn.query(sql);
+            var rows = await conn.query(sql);
 
             return {
                 isError: false,

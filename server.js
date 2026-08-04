@@ -7,6 +7,7 @@ const jwt = require('./libs/jwt');
 const dateUtils = require('./libs/date_utils.js');
 const dashboardModel = require('./models/dashboard.js');
 const incomeModel = require('./models/income.js');
+const empModel = require('./models/employee.js');
 
 const app = express();
 
@@ -156,6 +157,11 @@ app.get("/api/dashboard/summary", checkAccessToken, async (req, res) => {
 
 app.get("/api/income/monthly_history", checkAccessToken, async (req, res) => {
     const response = await incomeModel.getMonthlyIncomeHistory();
+    res.json(response);
+});
+
+app.get("/api/employee", checkAccessToken, async (req, res) => {
+    const response = await empModel.getEmployee();
     res.json(response);
 });
 
