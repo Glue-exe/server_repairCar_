@@ -5,8 +5,8 @@ const http = require('http');
 const userAccountModel = require('./models/user_account');
 const jwt = require('./libs/jwt');
 const dateUtils = require('./libs/date_utils.js');
-const incomeModel = require('./models/income');
-const jobPool = require('./models/job_pool.js');
+const dashboardModel = require('./models/dashboard.js');
+const incomeModel = require('./models/income.js');
 
 const app = express();
 
@@ -35,7 +35,7 @@ app.post("/api/multiple_by_2", (req, res) => {
     res.send(JSON.stringify(response));
 });
 
-app.get ("/api/user/:userId", async (req, res) => {
+app.get("/api/user/:userId", async (req, res) => {
     const userId = req.params.userId; //.params เก็บข้อมูลที่ได้จาก URL มาเป็น jsObj
     const response = await userAccountModel.getUserAccountById(userId);
     res.send(JSON.stringify(response));
@@ -64,7 +64,7 @@ app.post("/api/authen/authen_request", async (req, res) => {
             errorMessage: ""
         }
     }
-    
+
     res.send(JSON.stringify(response));
 });
 
@@ -81,11 +81,11 @@ app.post("/api/authen/access_request", async (req, res) => {
         decode = null;
     }
 
-    if(decode) {
+    if (decode) {
         const result = await userAccountModel.checkAccessRequest(authenSignature, authenToken);
         console.log(result);
-        
-        if(result.isError) {
+
+        if (result.isError) {
             response = {
                 isError: true,
                 data: "",
@@ -145,13 +145,15 @@ const checkAccessToken = (req, res, next) => {
         });
 }
 
-app.get("/api/income/monthly", checkAccessToken, async (req, res) => {
-    const response = await incomeModel.getMonthlyIncome();
+
+
+app.get("/api/dashboard/summary", checkAccessToken, async (req, res) => {
+    const response = await dashboardModel.getSummaryData();
     res.json(response);
 });
 
-app.get("/api/่jobpool", checkAccessToken, async (req, res) => {
-    const response = await jobPool.getJobPool();
+app.get("/api/income/monthly_history", checkAccessToken, async (req, res) => {
+    const response = await incomeModel.getMonthlyIncomeHistory();
     res.json(response);
 });
 
