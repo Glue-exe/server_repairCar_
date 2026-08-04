@@ -95,6 +95,9 @@ app.post("/api/authen/access_request", async (req, res) => {
             var payload = {
                 user_id: result.data[0].user_id,
                 username: result.data[0].account_username,
+                firstname: result.data[0].firstname,
+                lastname: result.data[0].lastname,
+                full_name: result.data[0].full_name,
                 role_id: result.data[0].user_role_id,
                 role_name: result.data[0].user_role_name,
                 date: dateUtils.getCurrentDateForToken()
@@ -105,7 +108,8 @@ app.post("/api/authen/access_request", async (req, res) => {
                 data: {
                     access_token: accessToken,
                     role_name: result.data[0].user_role_name,
-                    role_id: result.data[0].user_role_id
+                    role_id: result.data[0].user_role_id,
+                    full_name: result.data[0].full_name
                 },
                 errorMessage: ""
             }
@@ -144,8 +148,6 @@ const checkAccessToken = (req, res, next) => {
             });
         });
 }
-
-
 
 app.get("/api/dashboard/summary", checkAccessToken, async (req, res) => {
     const response = await dashboardModel.getSummaryData();
