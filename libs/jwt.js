@@ -6,6 +6,7 @@ module.exports = {
         let token = jwt.sign(payload, secretKey, { // jwt.sign create token จะเอาข้อมูลผู้ใช้และรหัสลับมาผสมกัน
             expiresIn: '1d' // token มีระยะเวลา 1 วัน
         });
+        console.log('jwt token: ' + token);
         return token;
     },
 

@@ -78,8 +78,7 @@ module.exports = {
                     SELECT 
                         u.user_id, 
                         u.account_username, 
-                        CONCAT(u.firstname, ' ', u.lastname) AS full_name,
-                        r.user_role_id, 
+                        CONCAT(u.firstname, ' ', u.lastname) AS full_name, 
                         r.user_role_name 
                     FROM users u
                     INNER JOIN user_role r ON u.user_role_id = r.user_role_id

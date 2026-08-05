@@ -43,7 +43,7 @@ app.get("/api/user/:userId", async (req, res) => {
 });
 
 app.post("/api/authen/authen_request", async (req, res) => {
-    console.log(req.body.authen_request)
+    console.log('authenRequestString: ' + req.body.authen_request)
     const authenRequest = req.body.authen_request;
     const result = await userAccountModel.checkAuthenRequest(authenRequest);
     console.log(result);
@@ -84,7 +84,7 @@ app.post("/api/authen/access_request", async (req, res) => {
 
     if (decode) {
         const result = await userAccountModel.checkAccessRequest(authenSignature, authenToken);
-        console.log(result);
+        console.log('result verify token: ' + result);
 
         if (result.isError) {
             response = {
@@ -99,7 +99,6 @@ app.post("/api/authen/access_request", async (req, res) => {
                 firstname: result.data[0].firstname,
                 lastname: result.data[0].lastname,
                 full_name: result.data[0].full_name,
-                role_id: result.data[0].user_role_id,
                 role_name: result.data[0].user_role_name,
                 date: dateUtils.getCurrentDateForToken()
             };
@@ -109,7 +108,6 @@ app.post("/api/authen/access_request", async (req, res) => {
                 data: {
                     access_token: accessToken,
                     role_name: result.data[0].user_role_name,
-                    role_id: result.data[0].user_role_id,
                     full_name: result.data[0].full_name
                 },
                 errorMessage: ""
