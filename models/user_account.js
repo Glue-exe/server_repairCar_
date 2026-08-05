@@ -90,7 +90,7 @@ module.exports = {
             if (rows.rowCount == 0) {
                 result = {
                     isError: true,
-                    errorMessage: "ไม่พบข้อมูลผู้ใช้ในระบบ"
+                    errorMessage: "รหัสผ่านไม่ถูกต้อง"
                 }
             } else {
                 result = {
