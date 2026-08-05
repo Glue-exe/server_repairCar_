@@ -82,7 +82,7 @@ module.exports = {
                         r.user_role_name 
                     FROM users u
                     INNER JOIN user_role r ON u.user_role_id = r.user_role_id
-                    WHERE encode(digest(u.account_username || '&' || encode(digest(u.account_password, 'sha256'), 'hex') || '&' || $1, 'sha256'), 'hex') = $2
+                    WHERE encode(digest(u.account_username || '&' || LOWER(TRIM(u.account_password)) || '&' || $1, 'sha256'), 'hex') = $2
                 `;
 
             var rows = await conn.query(sql, [authenToken, authenSignature]);
