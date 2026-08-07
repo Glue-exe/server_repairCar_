@@ -95,13 +95,15 @@ app.post("/api/authen/access_request", async (req, res) => {
                 errorMessage: result.errorMessage
             };
         } else {
-            var payload = {
+             var payload = {
                 user_id: result.data[0].user_id,
                 username: result.data[0].account_username,
+                emp_id: result.data[0].emp_id,
                 firstname: result.data[0].firstname,
                 lastname: result.data[0].lastname,
                 full_name: result.data[0].full_name,
                 role_name: result.data[0].user_role_name,
+                role_id: result.data[0].user_role_id,
                 date: dateUtils.getCurrentDateForToken()
             };
             const accessToken = jwt.sign(payload);
@@ -110,6 +112,7 @@ app.post("/api/authen/access_request", async (req, res) => {
                 data: {
                     access_token: accessToken,
                     role_name: result.data[0].user_role_name,
+                    role_id: result.data[0].user_role_id,
                     full_name: result.data[0].full_name
                 },
                 errorMessage: ""
@@ -140,6 +143,7 @@ const checkAccessToken = (req, res, next) => {
     jwt.verify(token)
         .then((decode) => {
             req.decode = decode;
+            req.user = decode;
             next();
         }, (err) => {
             res.json({
