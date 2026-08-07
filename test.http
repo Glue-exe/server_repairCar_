@@ -21,6 +21,7 @@ Content-Type: application/json
 {
     
 }
+
 ###
 GET http://localhost:3000/api/title HTTP/1.1
 Content-Type: application/json
@@ -44,11 +45,3 @@ Content-Type: application/json
 {
     "emp_id": "5"
 }
-
-###
-GET http://localhost:3000/api/vehicle?searchVehicalOrCustomer=0891112222 HTTP/1.1
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6Im93bmVyIiwiZnVsbF9uYW1lIjoi4Liq4Lih4LiK4Liy4LiiIOC4ouC4reC4lOC4muC4o-C4tOC4geC4suC4oyIsInJvbGVfbmFtZSI6Ik93bmVyIiwiZGF0ZSI6IjA1LTA4LTIwMjYiLCJpYXQiOjE3ODU5MzQyNTIsImV4cCI6MTc4NjAyMDY1Mn0.EqoHGo6dUn3dC42YYxNHgKi88GhXzvg42p5SZL0ILko
-
-###
-GET http://localhost:3000/api/vehicle?searchVehicalOrCustomer=กท1234 HTTP/1.1
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6Im93bmVyMDEiLCJmdWxsX25hbWUiOiLguKrguKHguIrguLLguKIg4LmD4LiI4LiU4Li1Iiwicm9sZV9uYW1lIjoi4LmA4LiI4LmJ4Liy4LiC4Lit4LiH4Lij4LmJ4Liy4LiZIiwicm9sZV9pZCI6MSwiZGF0ZSI6IjA1LTA4LTIwMjYiLCJpYXQiOjE3ODU5MzIzMzcsImV4cCI6MTc4NjAxODczN30.k259vmn6BWPoXKDGnZY-KFVErLzMadeIDzQ_TL8J7BA

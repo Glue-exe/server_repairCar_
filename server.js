@@ -8,6 +8,8 @@ const dateUtils = require('./libs/date_utils.js');
 const dashboardModel = require('./models/dashboard.js');
 const incomeModel = require('./models/income.js');
 const empModel = require('./models/employee.js');
+const titleModel = require('./models/title.js');
+const roleModel = require('./models/user_role.js');
 
 const app = express();
 
@@ -194,44 +196,6 @@ app.get("/api/user_role", checkAccessToken, async (req, res) => {
     res.json(response);
 });
 
-app.get("/api/vehicle", checkAccessToken, async (req, res) => {
-    try {
-        
-        const searchVehicalOrCustomer = req.query.searchVehicalOrCustomer;
-        if (!searchVehicalOrCustomer) {
-            return res.json({
-                isError: true,
-                data: null,
-                errorMessage: "กรุณาระบุคำค้นหา (searchVehicalOrCustomer)"
-            });
-        }
-        // เรียกใช้ฟังก์ชันค้นหาจาก model
-        const response = await vehiclessearch.searchVehicalOrCustomer(searchVehicalOrCustomer);
-        
-        res.json(response);
-    } catch (error) {
-        res.json({
-            isError: true,
-            data: null,
-            errorMessage: error.message
-        });
-    }
-});
-
-app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
-  try {
-    await addnewcustomer.createVehicalIntake (req, res);
-  } catch (error) {
-    console.error("Route /api/addnewcustomer Error:", error);
-    
-    if (!res.headersSent) {
-      return res.status(500).json({
-        isError: true,
-        errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
-      });
-    }
-  }
-});
 const hostname = '127.0.0.1';
 const port = 3000;
 
