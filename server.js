@@ -8,8 +8,8 @@ const dateUtils = require('./libs/date_utils.js');
 const dashboardModel = require('./models/dashboard.js');
 const incomeModel = require('./models/income.js');
 const empModel = require('./models/employee.js');
-const titleModel = require('./models/title.js');
-const roleModel = require('./models/user_role.js');
+const vehiclessearch = require('./models/vehiclesearch.js'); 
+const addnewcustomer = require('./models/addnewcustomer.js');
 
 const app = express();
 
@@ -169,33 +169,44 @@ app.get("/api/employee", checkAccessToken, async (req, res) => {
     res.json(response);
 });
 
-app.post("/api/employee", checkAccessToken, async (req, res) => {
-    const createBy = req.decode.user_id;
-    const response = await empModel.addEmployee(req.body, createBy);
-    res.json(response);
+app.get("/api/vehicle", checkAccessToken, async (req, res) => {
+    try {
+        
+        const searchVehicalOrCustomer = req.query.searchVehicalOrCustomer;
+        if (!searchVehicalOrCustomer) {
+            return res.json({
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุคำค้นหา (searchVehicalOrCustomer)"
+            });
+        }
+        // เรียกใช้ฟังก์ชันค้นหาจาก model
+        const response = await vehiclessearch.searchVehicalOrCustomer(searchVehicalOrCustomer);
+        
+        res.json(response);
+    } catch (error) {
+        res.json({
+            isError: true,
+            data: null,
+            errorMessage: error.message
+        });
+    }
 });
 
-app.put("/api/employee", checkAccessToken, async (req, res) => {
-    const response = await empModel.updateEmployee(req.body);
-    res.json(response);
+app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
+  try {
+    await addnewcustomer.createVehicalIntake (req, res);
+  } catch (error) {
+    console.error("Route /api/addnewcustomer Error:", error);
+    
+    if (!res.headersSent) {
+      return res.status(500).json({
+        isError: true,
+        errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
+      });
+    }
+  }
 });
-
-app.delete("/api/employee", async (req, res) => {
-   const empId = req.body.emp_id;
-   const response = await empModel.deleteEmployee(empId);
-   res.json(response); 
-});
-
-app.get("/api/title", checkAccessToken, async (req, res) => {
-    const response = await titleModel.getTitle();
-    res.json(response);
-});
-
-app.get("/api/user_role", checkAccessToken, async (req, res) => {
-    const response = await roleModel.getUserRole();
-    res.json(response);
-});
-
 const hostname = '127.0.0.1';
 const port = 3000;
 
