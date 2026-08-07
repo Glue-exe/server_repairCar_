@@ -8,8 +8,6 @@ const dateUtils = require('./libs/date_utils.js');
 const dashboardModel = require('./models/dashboard.js');
 const incomeModel = require('./models/income.js');
 const empModel = require('./models/employee.js');
-const vehiclessearch = require('./models/vehiclesearch.js'); 
-const addnewcustomer = require('./models/addnewcustomer.js');
 
 const app = express();
 
@@ -166,6 +164,33 @@ app.get("/api/income/monthly_history", checkAccessToken, async (req, res) => {
 
 app.get("/api/employee", checkAccessToken, async (req, res) => {
     const response = await empModel.getEmployee();
+    res.json(response);
+});
+
+app.post("/api/employee", checkAccessToken, async (req, res) => {
+    const createBy = req.decode.user_id;
+    const response = await empModel.addEmployee(req.body, createBy);
+    res.json(response);
+});
+
+app.put("/api/employee", checkAccessToken, async (req, res) => {
+    const response = await empModel.updateEmployee(req.body);
+    res.json(response);
+});
+
+app.delete("/api/employee", async (req, res) => {
+   const empId = req.body.emp_id;
+   const response = await empModel.deleteEmployee(empId);
+   res.json(response); 
+});
+
+app.get("/api/title", checkAccessToken, async (req, res) => {
+    const response = await titleModel.getTitle();
+    res.json(response);
+});
+
+app.get("/api/user_role", checkAccessToken, async (req, res) => {
+    const response = await roleModel.getUserRole();
     res.json(response);
 });
 

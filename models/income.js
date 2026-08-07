@@ -25,6 +25,7 @@ module.exports = {
                 data: rows.rows,
                 errorMessage: ""
             };
+
         } catch (error) {
             console.error('Error in getMonthlyIncomeHistory:', error);
             return {
@@ -32,6 +33,7 @@ module.exports = {
                 data: [],
                 errorMessage: error.message
             };
+            
         } finally {
             if (conn) {
                 conn.release();
