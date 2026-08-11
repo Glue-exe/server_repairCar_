@@ -10,6 +10,8 @@ const incomeModel = require('./models/income.js');
 const empModel = require('./models/employee.js');
 const vehiclessearch = require('./models/vehiclesearch.js'); 
 const addnewcustomer = require('./models/addnewcustomer.js');
+const titleModel = require('./models/title.js');
+const userRoleModel = require('./models/user_role.js');
 
 const app = express();
 
@@ -171,7 +173,6 @@ app.get("/api/employee", checkAccessToken, async (req, res) => {
 
 app.get("/api/vehicle", checkAccessToken, async (req, res) => {
     try {
-        
         const searchVehicalOrCustomer = req.query.searchVehicalOrCustomer;
         if (!searchVehicalOrCustomer) {
             return res.json({
@@ -180,9 +181,7 @@ app.get("/api/vehicle", checkAccessToken, async (req, res) => {
                 errorMessage: "กรุณาระบุคำค้นหา (searchVehicalOrCustomer)"
             });
         }
-        // เรียกใช้ฟังก์ชันค้นหาจาก model
         const response = await vehiclessearch.searchVehicalOrCustomer(searchVehicalOrCustomer);
-        
         res.json(response);
     } catch (error) {
         res.json({
@@ -198,7 +197,6 @@ app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
     await addnewcustomer.createVehicalIntake (req, res);
   } catch (error) {
     console.error("Route /api/addnewcustomer Error:", error);
-    
     if (!res.headersSent) {
       return res.status(500).json({
         isError: true,
@@ -206,6 +204,33 @@ app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
       });
     }
   }
+});
+
+app.get("/api/title", checkAccessToken, async (req, res) => {
+    const response = await titleModel.getTitle();
+    res.json(response);
+});
+
+app.get("/api/user_role", checkAccessToken, async (req, res) => {
+    const response = await userRoleModel.getUserRole();
+    res.json(response);
+});
+
+app.post("/api/employee", checkAccessToken, async (req, res) => {
+    const createByEmpId = req.user.emp_id;
+    const response = await empModel.addEmployee(req.body, createByEmpId);
+    res.json(response);
+});
+
+app.put("/api/employee", checkAccessToken, async (req, res) => {
+    const response = await empModel.updateEmployee(req.body);
+    res.json(response);
+});
+
+app.delete("/api/employee", checkAccessToken, async (req, res) => {
+    const empId = req.body.emp_id;
+    const response = await empModel.deleteEmployee(empId);
+    res.json(response);
 });
 const hostname = '127.0.0.1';
 const port = 3000;

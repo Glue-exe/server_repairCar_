@@ -13,7 +13,7 @@ module.exports = {
                     (
                         SELECT COALESCE(SUM(total), 0)::FLOAT 
                         FROM public.invoice 
-                        WHERE payment_status = 'Paid' 
+                        WHERE payment_status = 2 
                           AND paid_date IS NOT NULL 
                           AND TO_CHAR(paid_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
                     ) AS "monthlyIncome",
@@ -26,12 +26,12 @@ module.exports = {
                     (
                         SELECT COUNT(*)::INT 
                         FROM public.job_pool 
-                        WHERE pool_status != 'Completed'
+                        WHERE pool_status_id IN (1, 2)
                     ) AS "activeJobsCount",
                     (
                         SELECT COUNT(*)::INT 
                         FROM public.request_part 
-                        WHERE req_part_status != 'Approved' OR req_part_status IS NULL
+                        WHERE req_part_status = 1 OR req_part_status IS NULL
                     ) AS "pendingApprovalsCount";
             `;
 

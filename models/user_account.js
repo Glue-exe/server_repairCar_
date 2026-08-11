@@ -9,13 +9,13 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            var sql = "SELECT user_id, account_username FROM users WHERE user_id = $1";
+            var sql = "SELECT account_id AS user_id, account_username FROM account WHERE account_id = $1";
 
-            var rows = await conn.query(sql, [userId]); // accountId is Arrary ช่วยป้องกันจากการเจาะ $1
+            var rows = await conn.query(sql, [userId]);
 
             result = {
                 isError: false,
-                data: rows
+                data: rows.rows
             };
 
         } catch (error) {
@@ -25,7 +25,7 @@ module.exports = {
             }
         } finally {
             if (conn)
-                conn.release(); // .release ส่งคืน Connection กลับเข้าไปใน Pool
+                conn.release();
 
             return result;
         }
@@ -38,7 +38,7 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            var sql = "SELECT account_username FROM users WHERE "
+            var sql = "SELECT account_username FROM account WHERE "
                 + "encode(digest(account_username || '&' || $1, 'sha256'), 'hex') = $2";
 
             var rows = await conn.query(sql, [dateUtils.getCurrentDateForToken(), authenRequest]);
@@ -76,14 +76,18 @@ module.exports = {
 
             var sql = `
                     SELECT 
-                        u.user_id, 
-                        u.account_username, 
-                        u.emp_id, 
-                        CONCAT(u.firstname, ' ', u.lastname) AS full_name, 
-                        r.user_role_name 
-                    FROM users u
-                    INNER JOIN user_role r ON u.user_role_id = r.user_role_id
-                    WHERE encode(digest(u.account_username || '&' || LOWER(TRIM(u.account_password)) || '&' || $1, 'sha256'), 'hex') = $2
+                        a.account_id AS user_id, 
+                        a.account_username, 
+                        a.emp_id, 
+                        e.emp_firstname AS firstname,
+                        e.emp_lastname AS lastname,
+                        CONCAT(e.emp_firstname, ' ', e.emp_lastname) AS full_name, 
+                        r.account_role_name AS user_role_name, 
+                        r.account_role_id AS user_role_id
+                    FROM account a
+                    INNER JOIN account_role r ON a.account_role_id = r.account_role_id
+                    INNER JOIN employee e ON a.emp_id = e.emp_id
+                    WHERE encode(digest(a.account_username || '&' || LOWER(TRIM(a.account_password_hash)) || '&' || $1, 'sha256'), 'hex') = $2
                 `;
 
             var rows = await conn.query(sql, [authenToken, authenSignature]);
