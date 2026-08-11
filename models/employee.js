@@ -17,13 +17,15 @@ module.exports = {
                     e.emp_lastname,
                     CONCAT(t.title_name, e.emp_firstname, ' ', e.emp_lastname) AS emp_fullname,
                     e.emp_phone,
-                    e.user_role_id,
-                    r.user_role_name,
-                    e.emp_salary,
-                    e.emp_active
+                    a.account_role_id AS user_role_id,
+                    r.account_role_name AS user_role_name,
+                    e.emp_salary_current AS emp_salary,
+                    COALESCE(s.status_name, 'ทำงานอยู่') AS emp_active
                 FROM public.employee e
                 LEFT JOIN public.title t ON e.title_id = t.title_id
-                LEFT JOIN public.user_role r ON e.user_role_id = r.user_role_id
+                LEFT JOIN public.account a ON e.emp_id = a.emp_id
+                LEFT JOIN public.account_role r ON a.account_role_id = r.account_role_id
+                LEFT JOIN public.employee_status s ON a.status_id = s.status_id
                 ORDER BY e.emp_id ASC;
             `;
 
@@ -65,33 +67,33 @@ module.exports = {
 
             const empSql = `
                 INSERT INTO employee
-                    (title_id, emp_firstname, emp_lastname, emp_phone, user_role_id, emp_salary)
+                    (title_id, emp_firstname, emp_lastname, emp_phone, emp_salary_current)
                 VALUES 
-                    ($1, $2, $3, $4, $5, $6)
+                    ($1, $2, $3, $4, $5)
                 RETURNING emp_id
             `;
 
             const empParams = [
                 data.title_id, data.firstname, data.lastname,
-                data.phone, data.user_role_id, salary
+                data.phone, salary
             ];
 
             const empRes = await conn.query(empSql, empParams);
             const newEmpId = empRes.rows[0].emp_id;
 
-            const userSql = `
-                INSERT INTO users 
-                    (account_username, account_password, user_role_id, emp_id, firstname, lastname, create_by) 
+            const accountSql = `
+                INSERT INTO account 
+                    (account_username, account_password_hash, account_role_id, emp_id, create_by, status_id) 
                 VALUES 
-                    ($1, $2, $3, $4, $5, $6, $7)
+                    ($1, $2, $3, $4, $5, $6)
             `;
 
-            const userParams = [
+            const accountParams = [
                 data.username, data.password, data.user_role_id, newEmpId,
-                data.firstname, data.lastname, createByEmpId
+                createByEmpId || 1, 1
             ];
 
-            await conn.query(userSql, userParams);
+            await conn.query(accountSql, accountParams);
 
             await conn.query('COMMIT');
 
@@ -139,9 +141,8 @@ module.exports = {
                     emp_firstname = $2, 
                     emp_lastname = $3, 
                     emp_phone = $4, 
-                    user_role_id = $5,
-                    emp_salary = $6
-                WHERE emp_id = $7
+                    emp_salary_current = $5
+                WHERE emp_id = $6
             `;
 
             const empParams = [
@@ -149,21 +150,20 @@ module.exports = {
                 data.firstname, 
                 data.lastname,
                 data.phone, 
-                data.user_role_id, 
                 salary,
                 data.emp_id
             ];
 
             await conn.query(empSql, empParams);
 
-            const userSql = `
-                UPDATE users
-                SET firstname = $1, lastname = $2, user_role_id = $3
-                WHERE emp_id = $4
+            const accountSql = `
+                UPDATE account
+                SET account_role_id = $1
+                WHERE emp_id = $2
             `;
-            const userParams = [data.firstname, data.lastname, data.user_role_id, data.emp_id];
+            const accountParams = [data.user_role_id, data.emp_id];
 
-            await conn.query(userSql, userParams);
+            await conn.query(accountSql, accountParams);
 
             await conn.query('COMMIT');
             
@@ -198,8 +198,8 @@ module.exports = {
             conn = await pool.connect();
             await conn.query('BEGIN');
 
-            const userSql = `DELETE FROM users WHERE emp_id = $1`;
-            await conn.query(userSql, [emp_id]);
+            const accountSql = `DELETE FROM account WHERE emp_id = $1`;
+            await conn.query(accountSql, [emp_id]);
 
             const empSql = `DELETE FROM employee WHERE emp_id = $1`;
             await conn.query(empSql, [emp_id]);

@@ -10,10 +10,10 @@ module.exports = {
 
             var sql = `
                 SELECT 
-                    user_role_id,
-                    user_role_name
-                    
-                FROM user_role
+                    account_role_id AS user_role_id,
+                    account_role_name AS user_role_name
+                FROM account_role
+                ORDER BY account_role_id ASC
             `
             var rows = await conn.query(sql);
 

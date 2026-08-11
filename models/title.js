@@ -12,8 +12,8 @@ module.exports = {
                 SELECT 
                     title_id,
                     title_name
-                    
                 FROM title
+                ORDER BY title_id ASC
             `
             var rows = await conn.query(sql);
 
