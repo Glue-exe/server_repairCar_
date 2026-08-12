@@ -8,10 +8,11 @@ const dateUtils = require('./libs/date_utils.js');
 const dashboardModel = require('./models/dashboard.js');
 const incomeModel = require('./models/income.js');
 const empModel = require('./models/employee.js');
-const vehiclessearch = require('./models/vehiclesearch.js'); 
+const vehiclessearch = require('./models/vehiclesearch.js');
 const addnewcustomer = require('./models/addnewcustomer.js');
 const titleModel = require('./models/title.js');
 const userRoleModel = require('./models/user_role.js');
+const partModel = require('./models/part.js');
 
 const app = express();
 
@@ -97,7 +98,7 @@ app.post("/api/authen/access_request", async (req, res) => {
                 errorMessage: result.errorMessage
             };
         } else {
-             var payload = {
+            var payload = {
                 user_id: result.data[0].user_id,
                 username: result.data[0].account_username,
                 emp_id: result.data[0].emp_id,
@@ -193,17 +194,17 @@ app.get("/api/vehicle", checkAccessToken, async (req, res) => {
 });
 
 app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
-  try {
-    await addnewcustomer.createVehicalIntake (req, res);
-  } catch (error) {
-    console.error("Route /api/addnewcustomer Error:", error);
-    if (!res.headersSent) {
-      return res.status(500).json({
-        isError: true,
-        errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
-      });
+    try {
+        await addnewcustomer.createVehicalIntake(req, res);
+    } catch (error) {
+        console.error("Route /api/addnewcustomer Error:", error);
+        if (!res.headersSent) {
+            return res.status(500).json({
+                isError: true,
+                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
+            });
+        }
     }
-  }
 });
 
 app.get("/api/title", checkAccessToken, async (req, res) => {
@@ -232,6 +233,28 @@ app.delete("/api/employee", checkAccessToken, async (req, res) => {
     const response = await empModel.deleteEmployee(empId);
     res.json(response);
 });
+
+app.get("/api/part", checkAccessToken, async (req, res) => {
+    const response = await partModel.getPart();
+    res.json(response);
+});
+
+app.post("/api/part", checkAccessToken, async (req, res) => {
+    const response = await partModel.addPart(req.body);
+    res.json(response);
+});
+
+app.put("/api/part", checkAccessToken, async (req, res) => {
+    const response = await partModel.editPart(req.body);
+    res.json(response);
+});
+
+app.delete("/api/part", checkAccessToken, async (req, res) => {
+    const partId = req.body.part_id;
+    const response = await partModel.deletePart(partId);
+    res.json(response);
+});
+
 const hostname = '127.0.0.1';
 const port = 3000;
 
