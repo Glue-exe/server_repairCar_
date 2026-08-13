@@ -8,11 +8,13 @@ const dateUtils = require('./libs/date_utils.js');
 const dashboardModel = require('./models/dashboard.js');
 const incomeModel = require('./models/income.js');
 const empModel = require('./models/employee.js');
-const vehiclessearch = require('./models/vehiclesearch.js');
-const addnewcustomer = require('./models/addnewcustomer.js');
+const vehiclessearch = require('./models/vehicle_search.js');
+const addnewcustomer = require('./models/customer.js');
+const orderModel = require('./models/order.js');
 const titleModel = require('./models/title.js');
 const userRoleModel = require('./models/user_role.js');
 const partModel = require('./models/part.js');
+const vehicleModel = require('./models/vehicle.js');
 
 const app = express();
 
@@ -207,6 +209,48 @@ app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
     }
 });
 
+app.post("/api/addvehicle", checkAccessToken, async (req, res) => {
+    try {
+        await addnewcustomer.addVehicle(req, res);
+    } catch (error) {
+        console.error("Route /api/addvehicle Error:", error);
+        if (!res.headersSent) {
+            return res.status(500).json({
+                isError: true,
+                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
+            });
+        }
+    }
+});
+
+app.post("/api/addorder", checkAccessToken, async (req, res) => {
+    try {
+        await orderModel.addOrder(req, res);
+    } catch (error) {
+        console.error("Route /api/addorder Error:", error);
+        if (!res.headersSent) {
+            return res.status(500).json({
+                isError: true,
+                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
+            });
+        }
+    }
+});
+
+app.get("/api/orders", checkAccessToken, async (req, res) => {
+    try {
+        await orderModel.getOrders(req, res);
+    } catch (error) {
+        console.error("Route /api/orders Error:", error);
+        if (!res.headersSent) {
+            return res.status(500).json({
+                isError: true,
+                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
+            });
+        }
+    }
+});
+
 app.get("/api/title", checkAccessToken, async (req, res) => {
     const response = await titleModel.getTitle();
     res.json(response);
@@ -252,6 +296,63 @@ app.put("/api/part", checkAccessToken, async (req, res) => {
 app.delete("/api/part", checkAccessToken, async (req, res) => {
     const partId = req.body.part_id;
     const response = await partModel.deletePart(partId);
+    res.json(response);
+});
+
+// Vehicle Brand routes
+app.get("/api/vehicle_brand", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.getBrands();
+    res.json(response);
+});
+app.post("/api/vehicle_brand", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.addBrand(req.body);
+    res.json(response);
+});
+app.put("/api/vehicle_brand", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.updateBrand(req.body);
+    res.json(response);
+});
+app.delete("/api/vehicle_brand", checkAccessToken, async (req, res) => {
+    const brandId = req.body.brand_id;
+    const response = await vehicleModel.deleteBrand(brandId);
+    res.json(response);
+});
+
+// Vehicle Model routes
+app.get("/api/vehicle_model", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.getModels();
+    res.json(response);
+});
+app.post("/api/vehicle_model", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.addModel(req.body);
+    res.json(response);
+});
+app.put("/api/vehicle_model", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.updateModel(req.body);
+    res.json(response);
+});
+app.delete("/api/vehicle_model", checkAccessToken, async (req, res) => {
+    const modelId = req.body.veh_model_id;
+    const response = await vehicleModel.deleteModel(modelId);
+    res.json(response);
+});
+
+// Vehicle Year routes
+app.get("/api/vehicle_year", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.getYears();
+    res.json(response);
+});
+app.post("/api/vehicle_year", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.addYear(req.body);
+    res.json(response);
+});
+app.put("/api/vehicle_year", checkAccessToken, async (req, res) => {
+    const response = await vehicleModel.updateYear(req.body);
+    res.json(response);
+});
+app.delete("/api/vehicle_year", checkAccessToken, async (req, res) => {
+    const yearId = req.body.veh_year_id;
+    const response = await vehicleModel.deleteYear(yearId);
     res.json(response);
 });
 
