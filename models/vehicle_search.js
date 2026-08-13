@@ -4,7 +4,7 @@ module.exports = {
     searchVehicalOrCustomer: async (searchVehicalOrCustomer) => {
         let conn;
         try {
-            
+
             conn = await pool.connect();
             //ดึงข้อมูลชื่อลูกค้าและรถ
             const queryText = `
@@ -15,17 +15,19 @@ module.exports = {
                     c.cus_phone,
                     v.veh_id,
                     v.veh_licenseplate,
+                    vb.brand_name,
                     vm.model_name AS veh_model,
                     v.veh_color,
                     vy.year AS veh_year
                 FROM customer c
                 JOIN vehicle v ON c.cus_id = v.customer_id
-                JOIN vehicle_model vm ON v.veh_model_id = vm.model_id
-                JOIN vehicle_model_year vy ON v.model_year_id = vy.model_year_id
+                LEFT JOIN vehicle_brand vb ON v.brand_id = vb.brand_id
+                LEFT JOIN vehicle_model vm ON vb.model_id = vm.veh_model_id
+                LEFT JOIN vehicle_year vy ON vm.veh_year_id = vy.veh_year_id
                 WHERE TRIM(c.cus_phone) = TRIM($1)
                    OR TRIM(v.veh_licenseplate) ILIKE TRIM($1);
             `;
-            
+
             const vehicleResult = await conn.query(queryText, [searchVehicalOrCustomer]);
             const customersAndVehicles = vehicleResult.rows;
 
@@ -38,7 +40,7 @@ module.exports = {
                 const ordersResult = await conn.query(
                     `SELECT 
                         orders_id, cus_id, veh_id, emp_id, order_symptom, 
-                        status_id, orders_priority_id, labor_cost, repair_time, created_at 
+                        status_id, orders_priority_id, labor_cost, "repair time" AS repair_time, created_at 
                      FROM orders 
                      WHERE veh_id = ANY($1) 
                      ORDER BY created_at DESC`,
