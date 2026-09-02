@@ -1,45 +1,39 @@
 const pool = require("../libs/db_pool.js");
 
-async function resolveBrandId(client, brandInput, modelName, yearValue) {
+async function resolveModelId(client, brandInput, modelInput) {
   let brandName = '';
+  let brandId = null;
+
   if (brandInput && (typeof brandInput === 'number' || !isNaN(brandInput))) {
-    const res = await client.query("SELECT brand_name FROM vehicle_brand WHERE brand_id = $1", [parseInt(brandInput)]);
-    brandName = res.rows[0]?.brand_name || '';
-  } else {
-    brandName = (brandInput || '').toString().trim();
-  }
-  if (!brandName) brandName = 'ไม่ระบุ';
-
-  const yearInt = parseInt(yearValue) || 2020;
-  let yearRes = await client.query("SELECT veh_year_id FROM vehicle_year WHERE year = $1", [yearInt]);
-  let yearId;
-  if (yearRes.rows.length > 0) {
-    yearId = yearRes.rows[0].veh_year_id;
-  } else {
-    const ins = await client.query("INSERT INTO vehicle_year (year) VALUES ($1) RETURNING veh_year_id", [yearInt]);
-    yearId = ins.rows[0].veh_year_id;
+    const res = await client.query("SELECT vb_id AS id, vb_name AS name FROM vehicle_brand WHERE vb_id = $1", [parseInt(brandInput)]);
+    if (res.rows.length > 0) {
+      brandId = res.rows[0].id;
+      brandName = res.rows[0].name;
+    }
   }
 
-  const cleanModelName = (modelName || 'ไม่ระบุรุ่น').toString().trim();
-  let modelRes = await client.query("SELECT veh_model_id FROM vehicle_model WHERE TRIM(model_name) ILIKE $1 AND veh_year_id = $2", [cleanModelName, yearId]);
+  if (!brandId) {
+    brandName = (brandInput || 'ไม่ระบุยี่ห้อ').toString().trim();
+    let bRes = await client.query("SELECT vb_id AS id FROM vehicle_brand WHERE TRIM(vb_name) ILIKE $1", [brandName]);
+    if (bRes.rows.length > 0) {
+      brandId = bRes.rows[0].id;
+    } else {
+      const insBrand = await client.query("INSERT INTO vehicle_brand (vb_name) VALUES ($1) RETURNING vb_id AS id", [brandName]);
+      brandId = insBrand.rows[0].id;
+    }
+  }
+
+  const cleanModelName = (modelInput || 'ไม่ระบุรุ่น').toString().trim();
+  let modelRes = await client.query("SELECT vm_id AS id FROM vehicle_model WHERE TRIM(vm_name) ILIKE $1 AND vm_brand_id = $2", [cleanModelName, brandId]);
   let modelId;
   if (modelRes.rows.length > 0) {
-    modelId = modelRes.rows[0].veh_model_id;
+    modelId = modelRes.rows[0].id;
   } else {
-    const ins = await client.query("INSERT INTO vehicle_model (model_name, veh_year_id) VALUES ($1, $2) RETURNING veh_model_id", [cleanModelName, yearId]);
-    modelId = ins.rows[0].veh_model_id;
+    const insModel = await client.query("INSERT INTO vehicle_model (vm_name, vm_brand_id) VALUES ($1, $2) RETURNING vm_id AS id", [cleanModelName, brandId]);
+    modelId = insModel.rows[0].id;
   }
 
-  let brandRes = await client.query("SELECT brand_id FROM vehicle_brand WHERE TRIM(brand_name) ILIKE $1 AND model_id = $2", [brandName, modelId]);
-  let brandId;
-  if (brandRes.rows.length > 0) {
-    brandId = brandRes.rows[0].brand_id;
-  } else {
-    const ins = await client.query("INSERT INTO vehicle_brand (brand_name, model_id) VALUES ($1, $2) RETURNING brand_id", [brandName, modelId]);
-    brandId = ins.rows[0].brand_id;
-  }
-
-  return brandId;
+  return modelId;
 }
 
 module.exports = {
@@ -48,7 +42,16 @@ module.exports = {
     try {
       conn = await pool.connect();
       const sql = ` 
-        SELECT cus_id, title_id, cus_firstname, cus_lastname, cus_phone 
+        SELECT 
+          cus_id,
+          cus_id AS id, 
+          cus_title_id AS title_id, 
+          cus_first_name AS cus_firstname, 
+          cus_first_name AS first_name, 
+          cus_last_name AS cus_lastname, 
+          cus_last_name AS last_name, 
+          cus_phone AS cus_phone, 
+          cus_phone AS phone 
         FROM customer
         WHERE cus_id = $1
       `;
@@ -67,20 +70,23 @@ module.exports = {
       conn = await pool.connect();
       const sql = ` 
         SELECT 
-          v.veh_id, 
-          v.veh_licenseplate, 
-          v.brand_id,
-          vb.brand_name,
-          vb.model_id AS veh_model_id,
-          vm.model_name AS veh_model,
-          vm.veh_year_id AS model_year_id,
-          vy.year AS veh_year,
-          v.veh_color
+          v.v_id AS veh_id, 
+          v.v_id AS id, 
+          v.v_license_plate AS veh_licenseplate, 
+          v.v_license_plate AS license_plate, 
+          vb.vb_id AS brand_id,
+          vb.vb_name AS brand_name,
+          vm.vm_id AS veh_model_id,
+          vm.vm_name AS veh_model,
+          vm.vm_name AS model_name,
+          v.v_year AS veh_year,
+          v.v_year AS year,
+          v.v_color AS veh_color,
+          v.v_color AS color
         FROM vehicle v
-        LEFT JOIN vehicle_brand vb ON v.brand_id = vb.brand_id
-        LEFT JOIN vehicle_model vm ON vb.model_id = vm.veh_model_id
-        LEFT JOIN vehicle_year vy ON vm.veh_year_id = vy.veh_year_id
-        WHERE v.customer_id = $1
+        LEFT JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
+        LEFT JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
+        WHERE v.v_customer_id = $1
       `;
       const { rows } = await conn.query(sql, [cus_id]);
       return { isError: false, data: rows, errorMessage: "" };
@@ -94,16 +100,20 @@ module.exports = {
   addCustomer: async (Data, client = null) => {
     const db = client || pool;
     const { cus_firstname, cus_lastname, cus_phone, title_id = null } = Data;
+    const firstName = cus_firstname || Data.first_name || '';
+    const lastName = cus_lastname || Data.last_name || '';
+    const phone = cus_phone || Data.phone || '';
+
     const sql = `
-      INSERT INTO customer (cus_firstname, cus_lastname, cus_phone, title_id)
+      INSERT INTO customer (cus_first_name, cus_last_name, cus_phone, cus_title_id)
       VALUES ($1, $2, $3, $4)
-      RETURNING cus_id, cus_firstname, cus_lastname, cus_phone
+      RETURNING cus_id, cus_id AS id, cus_first_name AS cus_firstname, cus_first_name AS first_name, cus_last_name AS cus_lastname, cus_last_name AS last_name, cus_phone AS cus_phone, cus_phone AS phone
     `;
     const { rows } = await db.query(sql, [
-      cus_firstname.trim(),
-      cus_lastname.trim(),
-      cus_phone.trim(),
-      title_id
+      firstName.trim(),
+      lastName.trim(),
+      phone.trim(),
+      title_id || Data.cus_title_id
     ]);
     return rows[0];
   },
@@ -120,65 +130,71 @@ module.exports = {
       veh_year,
     } = req.body;
    
-    const current_emp_id = req.user?.emp_id ?? 4;
+    const current_account_id = req.user?.account_id ?? req.user?.acc_id ?? 1;
     const client = await pool.connect();
 
     try {
       await client.query("BEGIN");
 
       // ตรวจสอบทะเบียนรถซ้ำ
+      const plate = veh_licenseplate || req.body.license_plate || req.body.v_license_plate || '';
       const vehicleCheck = await client.query(
-        "SELECT veh_id FROM vehicle WHERE veh_licenseplate = $1",
-        [veh_licenseplate.trim()]
+        "SELECT v_id AS id FROM vehicle WHERE v_license_plate = $1",
+        [plate.trim()]
       );
 
       if (vehicleCheck.rows.length > 0) {
         await client.query("ROLLBACK");
         return res.status(400).json({
           isError: true,
-          errorMessage: `ทะเบียนรถ ${veh_licenseplate} มีอยู่ในระบบแล้ว ไม่สามารถเพิ่มซ้ำได้`,
+          errorMessage: `ทะเบียนรถ ${plate} มีอยู่ในระบบแล้ว ไม่สามารถเพิ่มซ้ำได้`,
         });
       }
 
       // ตรวจสอบ/เพิ่มข้อมูลลูกค้า
       let customerId;
+      const phone = cus_phone || req.body.phone || req.body.cus_phone || '';
       const customerCheck = await client.query(
-        "SELECT cus_id FROM customer WHERE cus_phone = $1",
-        [cus_phone.trim()]
+        "SELECT cus_id AS id FROM customer WHERE cus_phone = $1",
+        [phone.trim()]
       );
 
       if (customerCheck.rows.length > 0) {
-        customerId = customerCheck.rows[0].cus_id;
+        customerId = customerCheck.rows[0].id;
       } else {
         const insertCustomerQuery = `
-          INSERT INTO customer (cus_firstname, cus_lastname, cus_phone, create_by_emp, title_id) 
+          INSERT INTO customer (cus_first_name, cus_last_name, cus_phone, cus_created_by_account_id, cus_title_id) 
           VALUES ($1, $2, $3, $4, $5) 
-          RETURNING cus_id
+          RETURNING cus_id AS id
         `;
+        const firstName = cus_firstname || req.body.first_name || req.body.cus_first_name || '';
+        const lastName = cus_lastname || req.body.last_name || req.body.cus_last_name || '';
         const customerResult = await client.query(insertCustomerQuery, [
-          cus_firstname.trim(),
-          cus_lastname.trim(),
-          cus_phone.trim(),
-          current_emp_id, 
+          firstName.trim(),
+          lastName.trim(),
+          phone.trim(),
+          current_account_id, 
           1 
         ]);
-        customerId = customerResult.rows[0].cus_id;
+        customerId = customerResult.rows[0].id;
       }
 
-      // ค้นหาหรือสร้าง brand_id จริงที่ผูกกับชื่อยี่ห้อ ชื่อรุ่น และปีรุ่นตามที่ส่งมา
-      const resolvedBrandId = await resolveBrandId(client, brand_id, veh_model, veh_year);
+      const resolvedModelId = await resolveModelId(client, brand_id || req.body.vm_brand_id, veh_model || req.body.model_name || req.body.vm_name);
 
-      // บันทึกข้อมูลรถยนต์ด้วยข้อมูลที่มีในตารางจริง
       const insertVehicleQuery = `
-        INSERT INTO vehicle (customer_id, veh_licenseplate, brand_id, veh_color) 
-        VALUES ($1, $2, $3, $4) 
-        RETURNING veh_id
+        INSERT INTO vehicle (v_customer_id, v_license_plate, v_vehicle_model_id, v_year, v_color) 
+        VALUES ($1, $2, $3, $4, $5) 
+        RETURNING v_id AS id
       `;
+      const yearVal = parseInt(veh_year || req.body.year || req.body.v_year) || null;
+      const colorVal = (veh_color || req.body.color || req.body.v_color || '').trim();
+
       const vehicleResult = await client.query(insertVehicleQuery, [
         customerId,
-        veh_licenseplate.trim(),
-        resolvedBrandId,
-        veh_color.trim(),
+        plate.trim(),
+        resolvedModelId,
+        yearVal,
+        colorVal,
       ]);
 
       await client.query("COMMIT");
@@ -188,7 +204,8 @@ module.exports = {
         message: "บันทึกข้อมูลลูกค้าและรถยนต์สำเร็จ",
         data: {
           cus_id: customerId,
-          veh_id: vehicleResult.rows[0].veh_id,
+          veh_id: vehicleResult.rows[0].id,
+          id: vehicleResult.rows[0].id,
         },
       });
 
@@ -210,38 +227,43 @@ module.exports = {
     let conn;
     try {
       conn = await pool.connect();
+      const plate = veh_licenseplate || req.body.license_plate || req.body.v_license_plate || '';
       // ตรวจสอบทะเบียนรถซ้ำ
       const plateCheck = await conn.query(
-        "SELECT veh_id FROM vehicle WHERE veh_licenseplate = $1",
-        [veh_licenseplate.trim()]
+        "SELECT v_id AS id FROM vehicle WHERE v_license_plate = $1",
+        [plate.trim()]
       );
       if (plateCheck.rows.length > 0) {
         return res.status(400).json({
           isError: true,
-          errorMessage: `ทะเบียนรถ ${veh_licenseplate} มีอยู่ในระบบแล้ว`
+          errorMessage: `ทะเบียนรถ ${plate} มีอยู่ในระบบแล้ว`
         });
       }
 
-      // ค้นหาหรือสร้าง brand_id จริงที่ผูกกับชื่อยี่ห้อ ชื่อรุ่น และปีรุ่นตามที่ส่งมา
-      const resolvedBrandId = await resolveBrandId(conn, brand_id, veh_model, veh_year);
+      const resolvedModelId = await resolveModelId(conn, brand_id || req.body.vm_brand_id, veh_model || req.body.model_name || req.body.vm_name);
 
       const sql = `
-        INSERT INTO vehicle (customer_id, veh_licenseplate, brand_id, veh_color)
-        VALUES ($1, $2, $3, $4)
-        RETURNING veh_id
+        INSERT INTO vehicle (v_customer_id, v_license_plate, v_vehicle_model_id, v_year, v_color)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING v_id AS veh_id, v_id AS id
       `;
+      const yearVal = parseInt(veh_year || req.body.year || req.body.v_year) || null;
+      const colorVal = (veh_color || req.body.color || req.body.v_color || '').trim();
+
       const { rows } = await conn.query(sql, [
-        customer_id,
-        veh_licenseplate.trim(),
-        resolvedBrandId,
-        veh_color.trim()
+        customer_id || req.body.cus_id || req.body.v_customer_id,
+        plate.trim(),
+        resolvedModelId,
+        yearVal,
+        colorVal
       ]);
 
       return res.status(201).json({
         isError: false,
         message: "เพิ่มรถยนต์สำเร็จ",
         data: {
-          veh_id: rows[0].veh_id
+          veh_id: rows[0].id,
+          id: rows[0].id
         }
       });
     } catch (error) {

@@ -16,6 +16,8 @@ const userRoleModel = require('./models/user_role.js');
 const partModel = require('./models/part.js');
 const vehicleModel = require('./models/vehicle.js');
 
+const vehicle2Model = require('./models/vehicle2.js');
+
 const app = express();
 
 app.use(bp.urlencoded({ extended: true }));  //.urlencoded() แปลงข้อมูล URL-encoded รูปแบบ HTML Form นำมาแยกให้เป็น obj (req.body) || true ใช้ libarly qs ในการแปลข้อมูล
@@ -353,6 +355,18 @@ app.put("/api/vehicle_year", checkAccessToken, async (req, res) => {
 app.delete("/api/vehicle_year", checkAccessToken, async (req, res) => {
     const yearId = req.body.veh_year_id;
     const response = await vehicleModel.deleteYear(yearId);
+    res.json(response);
+});
+
+app.post("/api/vehicle_search_licensePlate", async (req, res) => {
+    const licenseplate = req.body.v_license_plate;
+    const response = await vehicle2Model.searchLicenseplate(licenseplate);
+    res.json(response);
+});
+
+app.post("/api/vehicle_search_phone", async (req, res) => {
+    const phone = req.body.phone;
+    const response = await vehicle2Model.searchPhone(phone);
     res.json(response);
 });
 
