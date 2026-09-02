@@ -82,3 +82,19 @@ Content-Type: application/json
 {
     "part_id": 10
 }
+
+###
+POST http://localhost:3000/api/vehicle_search_licensePlate HTTP/1.1
+Content-Type: application/json
+
+{
+    "v_license_plate": "กข1234สงขลา"
+}
+
+###
+POST http://localhost:3000/api/vehicle_search_phone HTTP/1.1
+Content-Type: application/json
+
+{
+    "phone": "0952354135"
+}

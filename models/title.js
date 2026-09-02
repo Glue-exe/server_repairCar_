@@ -10,18 +10,22 @@ module.exports = {
 
             var sql = `
                 SELECT 
-                    title_id,
-                    title_name
+                    t_id,
+                    t_name,
+                    t_id AS id,
+                    t_name AS name,
+                    t_id AS title_id,
+                    t_name AS title_name
                 FROM title
-                ORDER BY title_id ASC
-            `
+                ORDER BY t_id ASC
+            `;
             var rows = await conn.query(sql);
 
             result = {
                 isError: false,
                 data: rows.rows,
                 errorMessage: ""
-            }
+            };
 
         } catch (error) {
             result = {

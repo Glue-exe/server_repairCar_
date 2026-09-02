@@ -10,22 +10,27 @@ module.exports = {
 
             var sql = `
                 SELECT 
-                    e.emp_id,
-                    e.title_id,
-                    t.title_name,
-                    e.emp_firstname,
-                    e.emp_lastname,
-                    CONCAT(t.title_name, e.emp_firstname, ' ', e.emp_lastname) AS emp_fullname,
-                    e.emp_phone,
-                    a.account_role_id AS user_role_id,
-                    r.account_role_name AS user_role_name,
-                    e.emp_salary_current AS emp_salary,
-                    COALESCE(s.status_name, 'ทำงานอยู่') AS emp_active
+                    e.emp_id AS emp_id,
+                    e.emp_id AS id,
+                    e.emp_title_id AS title_id,
+                    t.t_name AS title_name,
+                    e.emp_first_name AS emp_firstname,
+                    e.emp_first_name AS first_name,
+                    e.emp_last_name AS emp_lastname,
+                    e.emp_last_name AS last_name,
+                    CONCAT(t.t_name, e.emp_first_name, ' ', e.emp_last_name) AS emp_fullname,
+                    e.emp_phone AS emp_phone,
+                    e.emp_phone AS phone,
+                    a.acc_role_id AS user_role_id,
+                    r.ar_name AS user_role_name,
+                    e.emp_current_salary AS emp_salary,
+                    e.emp_current_salary AS current_salary,
+                    COALESCE(s.as_name, 'ทำงานอยู่') AS emp_active
                 FROM public.employee e
-                LEFT JOIN public.title t ON e.title_id = t.title_id
-                LEFT JOIN public.account a ON e.emp_id = a.emp_id
-                LEFT JOIN public.account_role r ON a.account_role_id = r.account_role_id
-                LEFT JOIN public.employee_status s ON a.status_id = s.status_id
+                LEFT JOIN public.title t ON e.emp_title_id = t.t_id
+                LEFT JOIN public.account a ON e.emp_id = a.acc_employee_id
+                LEFT JOIN public.account_role r ON a.acc_role_id = r.ar_id
+                LEFT JOIN public.account_status s ON a.acc_status_id = s.as_id
                 ORDER BY e.emp_id ASC;
             `;
 
@@ -67,15 +72,18 @@ module.exports = {
 
             const empSql = `
                 INSERT INTO employee
-                    (title_id, emp_firstname, emp_lastname, emp_phone, emp_salary_current)
+                    (emp_title_id, emp_first_name, emp_last_name, emp_phone, emp_current_salary)
                 VALUES 
                     ($1, $2, $3, $4, $5)
-                RETURNING emp_id
+                RETURNING emp_id, emp_id AS id
             `;
 
             const empParams = [
-                data.title_id, data.firstname, data.lastname,
-                data.phone, salary
+                data.title_id || data.emp_title_id, 
+                data.firstname || data.first_name || data.emp_first_name, 
+                data.lastname || data.last_name || data.emp_last_name,
+                data.phone || data.emp_phone, 
+                salary
             ];
 
             const empRes = await conn.query(empSql, empParams);
@@ -83,14 +91,18 @@ module.exports = {
 
             const accountSql = `
                 INSERT INTO account 
-                    (account_username, account_password_hash, account_role_id, emp_id, create_by, status_id) 
+                    (acc_username, acc_password_hash, acc_role_id, acc_employee_id, acc_created_by_account_id, acc_status_id) 
                 VALUES 
                     ($1, $2, $3, $4, $5, $6)
             `;
 
             const accountParams = [
-                data.username, data.password, data.user_role_id, newEmpId,
-                createByEmpId || 1, 1
+                data.username || data.acc_username, 
+                data.password || data.acc_password_hash, 
+                data.user_role_id || data.acc_role_id, 
+                newEmpId,
+                createByEmpId || 1, 
+                1
             ];
 
             await conn.query(accountSql, accountParams);
@@ -137,31 +149,31 @@ module.exports = {
 
             const empSql = `
                 UPDATE employee
-                SET title_id = $1, 
-                    emp_firstname = $2, 
-                    emp_lastname = $3, 
+                SET emp_title_id = $1, 
+                    emp_first_name = $2, 
+                    emp_last_name = $3, 
                     emp_phone = $4, 
-                    emp_salary_current = $5
+                    emp_current_salary = $5
                 WHERE emp_id = $6
             `;
 
             const empParams = [
-                data.title_id, 
-                data.firstname, 
-                data.lastname,
-                data.phone, 
+                data.title_id || data.emp_title_id, 
+                data.firstname || data.first_name || data.emp_first_name, 
+                data.lastname || data.last_name || data.emp_last_name, 
+                data.phone || data.emp_phone, 
                 salary,
-                data.emp_id
+                data.emp_id || data.id
             ];
 
             await conn.query(empSql, empParams);
 
             const accountSql = `
                 UPDATE account
-                SET account_role_id = $1
-                WHERE emp_id = $2
+                SET acc_role_id = $1
+                WHERE acc_employee_id = $2
             `;
-            const accountParams = [data.user_role_id, data.emp_id];
+            const accountParams = [data.user_role_id || data.acc_role_id, data.emp_id || data.id];
 
             await conn.query(accountSql, accountParams);
 
@@ -198,7 +210,7 @@ module.exports = {
             conn = await pool.connect();
             await conn.query('BEGIN');
 
-            const accountSql = `DELETE FROM account WHERE emp_id = $1`;
+            const accountSql = `DELETE FROM account WHERE acc_employee_id = $1`;
             await conn.query(accountSql, [emp_id]);
 
             const empSql = `DELETE FROM employee WHERE emp_id = $1`;

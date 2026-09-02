@@ -8,13 +8,13 @@ module.exports = {
 
             const sql = `
                 SELECT 
-                    TO_CHAR(paid_date, 'YYYY-MM') AS month_year,
-                    SUM(total)::FLOAT AS total_amount
+                    TO_CHAR(i_paid_at, 'YYYY-MM') AS month_year,
+                    SUM(i_total)::FLOAT AS total_amount
                 FROM public.invoice
-                WHERE payment_status = 2
-                    AND paid_date IS NOT NULL
-                    AND paid_date >= CURRENT_DATE - INTERVAL '12 months'
-                GROUP BY TO_CHAR(paid_date, 'YYYY-MM')
+                WHERE i_payment_status_id = 2
+                    AND i_paid_at IS NOT NULL
+                    AND i_paid_at >= CURRENT_DATE - INTERVAL '12 months'
+                GROUP BY TO_CHAR(i_paid_at, 'YYYY-MM')
                 ORDER BY month_year ASC;
             `;
 

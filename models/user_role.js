@@ -10,18 +10,22 @@ module.exports = {
 
             var sql = `
                 SELECT 
-                    account_role_id AS user_role_id,
-                    account_role_name AS user_role_name
+                    ar_id,
+                    ar_name,
+                    ar_id AS id,
+                    ar_name AS name,
+                    ar_id AS user_role_id,
+                    ar_name AS user_role_name
                 FROM account_role
-                ORDER BY account_role_id ASC
-            `
+                ORDER BY ar_id ASC
+            `;
             var rows = await conn.query(sql);
 
             result = {
                 isError: false,
                 data: rows.rows,
                 errorMessage: ""
-            }
+            };
 
         } catch (error) {
             result = {

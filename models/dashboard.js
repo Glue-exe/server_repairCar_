@@ -11,27 +11,27 @@ module.exports = {
             var sql = `
                 SELECT 
                     (
-                        SELECT COALESCE(SUM(total), 0)::FLOAT 
+                        SELECT COALESCE(SUM(i_total), 0)::FLOAT 
                         FROM public.invoice 
-                        WHERE payment_status = 2 
-                          AND paid_date IS NOT NULL 
-                          AND TO_CHAR(paid_date, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+                        WHERE i_payment_status_id = 2 
+                          AND i_paid_at IS NOT NULL 
+                          AND TO_CHAR(i_paid_at, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
                     ) AS "monthlyIncome",
                     (
                         SELECT COUNT(*)::INT 
                         FROM public.orders 
-                        WHERE created_at IS NOT NULL 
-                          AND TO_CHAR(created_at, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+                        WHERE o_created_at IS NOT NULL 
+                          AND TO_CHAR(o_created_at, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
                     ) AS "vehiclesThisMonth",
                     (
                         SELECT COUNT(*)::INT 
-                        FROM public.job_pool 
-                        WHERE pool_status_id IN (1, 2)
+                        FROM public.orders 
+                        WHERE o_order_status_id IN (1, 2)
                     ) AS "activeJobsCount",
                     (
                         SELECT COUNT(*)::INT 
                         FROM public.request_part 
-                        WHERE req_part_status = 1 OR req_part_status IS NULL
+                        WHERE rp_req_part_status_id = 1 OR rp_req_part_status_id IS NULL
                     ) AS "pendingApprovalsCount";
             `;
 
@@ -58,4 +58,3 @@ module.exports = {
         }
     }
 };
-
