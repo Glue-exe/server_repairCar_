@@ -98,3 +98,39 @@ Content-Type: application/json
 {
     "phone": "0952354135"
 }
+
+###
+POST http://localhost:3000/api/add_customer HTTP/1.1
+Content-Type: application/json
+
+{
+    "cus_title_id": 1,
+    "cus_first_name": "สมชาย",
+    "cus_last_name": "ใจดี",
+    "cus_phone": "0812345678",
+    "cus_created_by_account_id": 1,
+    "v_license_plate": "1กก-9999",
+    "v_vehicle_model_id": 1,
+    "v_year": 2022,
+    "v_color": "ขาว"
+}
+
+###
+POST http://localhost:3000/api/vehicle_orders HTTP/1.1
+Content-Type: application/json
+
+{
+    "vehicle_id": 1
+}
+
+###
+POST http://localhost:3000/api/create_order HTTP/1.1
+Content-Type: application/json
+
+{
+    "o_vehicle_id": 1,
+    "o_symptom": "เครื่องสั่น แอร์ไม่เย็น",
+    "o_priority_id": 1,
+    "o_order_status_id": 1,
+    "o_created_by_account_id": 1
+}

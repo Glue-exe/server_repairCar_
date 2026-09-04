@@ -2,6 +2,8 @@ const { log, error } = require('console');
 const bp = require('body-parser');
 const express = require('express');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const userAccountModel = require('./models/user_account');
 const jwt = require('./libs/jwt');
 const dateUtils = require('./libs/date_utils.js');
@@ -17,13 +19,21 @@ const partModel = require('./models/part.js');
 const vehicleModel = require('./models/vehicle.js');
 
 const vehicle2Model = require('./models/vehicle2.js');
+const order2Model = require('./models/order2.js');
 
 const app = express();
 
-app.use(bp.urlencoded({ extended: true }));  //.urlencoded() แปลงข้อมูล URL-encoded รูปแบบ HTML Form นำมาแยกให้เป็น obj (req.body) || true ใช้ libarly qs ในการแปลข้อมูล
-app.use(bp.json()); // แปลง JSON เป็น jsObj เก็บใน req.body
+app.use(bp.urlencoded({ limit: '50mb', extended: true }));
+app.use(bp.json({ limit: '50mb' }));
 const cors = require('cors');
-app.use(cors()); // อนุญาตให้ทุกแอปวิ่งเข้ามาดึงข้อมูลได้
+app.use(cors());
+
+// สร้างโฟลเดอร์ uploads ถ้ายังไม่มี และเปิดให้อ่านไฟล์รูปได้
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadDir));
 
 app.get("/api/users", (req, res) => {
     var response = {
@@ -258,6 +268,11 @@ app.get("/api/title", checkAccessToken, async (req, res) => {
     res.json(response);
 });
 
+app.get("/api/priority", checkAccessToken, async (req, res) => {
+    const response = await order2Model.getPriorities();
+    res.json(response);
+});
+
 app.get("/api/user_role", checkAccessToken, async (req, res) => {
     const response = await userRoleModel.getUserRole();
     res.json(response);
@@ -367,6 +382,22 @@ app.post("/api/vehicle_search_licensePlate", async (req, res) => {
 app.post("/api/vehicle_search_phone", async (req, res) => {
     const phone = req.body.phone;
     const response = await vehicle2Model.searchPhone(phone);
+    res.json(response);
+});
+
+app.post("/api/add_customer", async (req, res) => {
+    const response = await addnewcustomer.addCustomer(req.body);
+    res.json(response);
+});
+
+app.post("/api/vehicle_orders", async (req, res) => {
+    const vehicleId = req.body.vehicle_id;
+    const response = await order2Model.getOrdersByVehicleId(vehicleId);
+    res.json(response);
+});
+
+app.post("/api/create_order", async (req, res) => {
+    const response = await order2Model.createOrder(req.body);
     res.json(response);
 });
 

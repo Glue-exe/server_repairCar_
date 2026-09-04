@@ -9,7 +9,9 @@ module.exports = {
 
             var searchLicenseplateSQL = `
                 SELECT
+                    veh.v_id,
                     cus.cus_first_name || ' ' || cus.cus_last_name AS fullname,
+                    cus.cus_phone,
                     veh.v_license_plate,
                     vehModel.vm_name,
                     vehBrand.vb_name,
@@ -53,15 +55,14 @@ module.exports = {
 
             var searchPhoneSQL = `
                 SELECT
+                    vehicle.v_id,
                     customer.cus_first_name || ' ' || customer.cus_last_name AS fullname,
-                    customer.cus_first_name AS first_name,
-                    customer.cus_last_name AS last_name,
-                    customer.cus_phone AS phone,
-                    vehicle.v_license_plate AS license_plate,
-                    vehicle.v_year AS year,
-                    vehicle.v_color AS color,
-                    vehicle_model.vm_name AS model_name,
-                    vehicle_brand.vb_name AS brand_name
+                    customer.cus_phone,
+                    vehicle.v_license_plate,
+                    vehicle.v_year,
+                    vehicle.v_color,
+                    vehicle_model.vm_name,
+                    vehicle_brand.vb_name
                 FROM customer
                 INNER JOIN vehicle ON customer.cus_id = vehicle.v_customer_id
                 INNER JOIN vehicle_model ON vehicle.v_vehicle_model_id = vehicle_model.vm_id
