@@ -128,6 +128,8 @@ app.post("/api/authen/access_request", async (req, res) => {
                 isError: false,
                 data: {
                     access_token: accessToken,
+                    user_id: result.data[0].user_id,
+                    account_id: result.data[0].account_id,
                     role_name: result.data[0].user_role_name,
                     role_id: result.data[0].user_role_id,
                     full_name: result.data[0].full_name
@@ -271,6 +273,99 @@ app.get("/api/title", checkAccessToken, async (req, res) => {
 app.get("/api/priority", checkAccessToken, async (req, res) => {
     const response = await order2Model.getPriorities();
     res.json(response);
+});
+
+app.get("/api/order_status", checkAccessToken, async (req, res) => {
+    const response = await order2Model.getOrderStatuses();
+    res.json(response);
+});
+
+app.get("/api/all_orders", checkAccessToken, async (req, res) => {
+    const response = await order2Model.getAllOrders();
+    res.json(response);
+});
+
+app.get("/api/order/technicians", checkAccessToken, async (req, res) => {
+    try {
+        const orderId = req.query.order_id;
+        if (!orderId) {
+            return res.status(400).json({
+                isError: true,
+                data: [],
+                errorMessage: "กรุณาระบุ order_id"
+            });
+        }
+        const response = await order2Model.getOrderTechnicians(orderId);
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({
+            isError: true,
+            data: [],
+            errorMessage: error.message
+        });
+    }
+});
+
+app.post("/api/order/accept", checkAccessToken, async (req, res) => {
+    try {
+        const orderId = req.body.order_id;
+        const accountId = req.user.user_id;
+
+        if (!orderId) {
+            return res.status(400).json({
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุ order_id"
+            });
+        }
+
+        const response = await order2Model.acceptOrder(orderId, accountId);
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({
+            isError: true,
+            data: null,
+            errorMessage: error.message
+        });
+    }
+});
+
+app.post("/api/order/cancel_technician", checkAccessToken, async (req, res) => {
+    try {
+        const orderId = req.body.order_id;
+        const accountId = req.user.user_id;
+
+        if (!orderId) {
+            return res.status(400).json({
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุ order_id"
+            });
+        }
+
+        const response = await order2Model.cancelOrderTechnician(orderId, accountId);
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({
+            isError: true,
+            data: null,
+            errorMessage: error.message
+        });
+    }
+});
+
+app.post("/api/order/update_status", checkAccessToken, async (req, res) => {
+    try {
+        const { order_id, status_id } = req.body;
+        const response = await order2Model.updateOrderStatus(order_id, status_id);
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({
+            isError: true,
+            data: null,
+            errorMessage: error.message
+        });
+    }
 });
 
 app.get("/api/user_role", checkAccessToken, async (req, res) => {
