@@ -417,7 +417,7 @@ module.exports = {
         }
     },
 
-    updateOrderStatus: async (orderId, statusId) => {
+    updateOrderStatus: async (orderId, statusId, accountId) => {
         let conn;
         let result;
 
@@ -426,6 +426,12 @@ module.exports = {
 
             var sql = "UPDATE orders SET o_order_status_id = $1, o_updated_at = CURRENT_TIMESTAMP WHERE o_id = $2 RETURNING o_id, o_order_status_id";
             await conn.query(sql, [statusId, orderId]);
+
+            var logSql = `
+                INSERT INTO repair_log (rl_order_id, rl_updated_by_account_id, rl_created_at)
+                VALUES ($1, $2, CURRENT_TIMESTAMP);
+            `;
+            await conn.query(logSql, [orderId, accountId]);
 
             result = {
                 isError: false,

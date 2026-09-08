@@ -355,17 +355,11 @@ app.post("/api/order/cancel_technician", checkAccessToken, async (req, res) => {
 });
 
 app.post("/api/order/update_status", checkAccessToken, async (req, res) => {
-    try {
-        const { order_id, status_id } = req.body;
-        const response = await order2Model.updateOrderStatus(order_id, status_id);
-        res.json(response);
-    } catch (error) {
-        res.status(500).json({
-            isError: true,
-            data: null,
-            errorMessage: error.message
-        });
-    }
+    const orderId = req.body.order_id;
+    const statusId = req.body.status_id;
+    const accountId = req.user.user_id;
+    const response = await order2Model.updateOrderStatus(orderId, statusId, accountId);
+    res.json(response);
 });
 
 app.get("/api/user_role", checkAccessToken, async (req, res) => {
