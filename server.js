@@ -20,6 +20,8 @@ const vehicleModel = require('./models/vehicle.js');
 
 const vehicle2Model = require('./models/vehicle2.js');
 const order2Model = require('./models/order2.js');
+const serviceModel = require('./models/service.js');
+const subTaskModel = require('./models/sub_task.js');
 
 const app = express();
 
@@ -155,7 +157,7 @@ const checkAccessToken = (req, res, next) => {
         token = req.headers.authorization.split(' ')[1];
     } else if (req.query && req.query.token) {
         token = req.query.token;
-    } else {
+    } else if (req.body && req.body.token) {
         token = req.body.token;
     }
 
@@ -195,63 +197,60 @@ app.get("/api/vehicle", checkAccessToken, async (req, res) => {
 });
 
 app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
-    try {
-        await addnewcustomer.createVehicalIntake(req, res);
-    } catch (error) {
-        console.error("Route /api/addnewcustomer Error:", error);
-        if (!res.headersSent) {
-            return res.status(500).json({
-                isError: true,
-                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
-            });
-        }
-    }
+    await addnewcustomer.createVehicalIntake(req, res);
 });
 
 app.post("/api/addvehicle", checkAccessToken, async (req, res) => {
-    try {
-        await addnewcustomer.addVehicle(req, res);
-    } catch (error) {
-        console.error("Route /api/addvehicle Error:", error);
-        if (!res.headersSent) {
-            return res.status(500).json({
-                isError: true,
-                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
-            });
-        }
-    }
+    await addnewcustomer.addVehicle(req, res);
 });
 
 app.post("/api/addorder", checkAccessToken, async (req, res) => {
-    try {
-        await orderModel.addOrder(req, res);
-    } catch (error) {
-        console.error("Route /api/addorder Error:", error);
-        if (!res.headersSent) {
-            return res.status(500).json({
-                isError: true,
-                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
-            });
-        }
-    }
+    await orderModel.addOrder(req, res);
 });
 
 app.get("/api/orders", checkAccessToken, async (req, res) => {
-    try {
-        await orderModel.getOrders(req, res);
-    } catch (error) {
-        console.error("Route /api/orders Error:", error);
-        if (!res.headersSent) {
-            return res.status(500).json({
-                isError: true,
-                errorMessage: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ไม่สามารถดำเนินการได้",
-            });
-        }
-    }
+    await orderModel.getOrders(req, res);
 });
 
 app.get("/api/title", checkAccessToken, async (req, res) => {
     const response = await titleModel.getTitle();
+    res.json(response);
+});
+
+app.get("/api/service", checkAccessToken, async (req, res) => {
+    const response = await serviceModel.getServices();
+    res.json(response);
+});
+
+app.get("/api/sub_task_status", checkAccessToken, async (req, res) => {
+    const response = await subTaskModel.getSubTaskStatuses();
+    res.json(response);
+});
+
+app.post("/api/sub_task", checkAccessToken, async (req, res) => {
+    const response = await subTaskModel.addSubTask(req.body);
+    res.json(response);
+});
+
+app.get("/api/sub_tasks", checkAccessToken, async (req, res) => {
+    const orderId = req.query.order_id;
+    const response = await subTaskModel.getSubTasksByOrderId(orderId);
+    res.json(response);
+});
+
+app.post("/api/sub_task/accept", checkAccessToken, async (req, res) => {
+    const subTaskId = req.body.sub_task_id;
+    const orderId = req.body.order_id;
+    const accountId = req.user.user_id;
+    const response = await subTaskModel.acceptSubTask(subTaskId, orderId, accountId);
+    res.json(response);
+});
+
+app.post("/api/sub_task/cancel", checkAccessToken, async (req, res) => {
+    const subTaskId = req.body.sub_task_id;
+    const orderId = req.body.order_id;
+    const accountId = req.user.user_id;
+    const response = await subTaskModel.cancelSubTask(subTaskId, orderId, accountId);
     res.json(response);
 });
 
