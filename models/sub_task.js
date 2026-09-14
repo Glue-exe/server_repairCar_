@@ -91,7 +91,8 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            var sql = `
+            // 1. ดึงรายการงานย่อยทั้งหมด
+            var subTaskSql = `
                 SELECT 
                     st.st_id AS id,
                     st.st_order_id AS order_id,
@@ -99,25 +100,39 @@ module.exports = {
                     st.st_name AS name,
                     st.st_labor_cost AS labor_cost,
                     st.st_sub_task_status_id AS status_id,
-                    sts.sts_name AS status_name,
-                    COALESCE(ot.ot_account_id, 0) AS technician_account_id,
-                    COALESCE(emp.emp_first_name, '') AS technician_first_name,
-                    COALESCE(emp.emp_last_name, '') AS technician_last_name
+                    sts.sts_name AS status_name
                 FROM sub_task st
                 INNER JOIN sub_task_status sts ON st.st_sub_task_status_id = sts.sts_id
-                LEFT JOIN sub_task_technician stt ON st.st_id = stt.stt_sub_task_id
-                LEFT JOIN order_technician ot ON stt.stt_order_technician_id = ot.ot_id
-                LEFT JOIN account acc ON ot.ot_account_id = acc.acc_id
-                LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
                 WHERE st.st_order_id = $1
                 ORDER BY st.st_id ASC;
             `;
+            var subTasks = await conn.query(subTaskSql, [orderId]);
 
-            var rows = await conn.query(sql, [orderId]);
+            // 2. ดึงช่างที่รับผิดชอบงานย่อยใน order นี้
+            var techSql = `
+                SELECT 
+                    stt.stt_sub_task_id AS sub_task_id,
+                    acc.acc_id AS account_id,
+                    emp.emp_first_name AS firstname,
+                    emp.emp_last_name AS lastname,
+                    COALESCE(ar.ar_name, '') AS role_name
+                FROM sub_task_technician stt
+                INNER JOIN order_technician ot ON stt.stt_order_technician_id = ot.ot_id
+                INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
+                LEFT JOIN account_role ar ON acc.acc_role_id = ar.ar_id
+                INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                WHERE ot.ot_order_id = $1;
+            `;
+            var techRows = await conn.query(techSql, [orderId]);
+
+            // 3. ผูกข้อมูลช่างใส่งานย่อยแต่ละรายการ
+            for (let task of subTasks.rows) {
+                task.technicians = techRows.rows.filter(t => t.sub_task_id === task.id);
+            }
 
             result = {
                 isError: false,
-                data: rows.rows,
+                data: subTasks.rows,
                 errorMessage: ""
             };
 
@@ -157,10 +172,16 @@ module.exports = {
                 otId = otRes.rows[0].ot_id;
             }
 
-            await conn.query(
-                "INSERT INTO sub_task_technician (stt_sub_task_id, stt_order_technician_id) VALUES ($1, $2)",
+            const existingStt = await conn.query(
+                "SELECT stt_id FROM sub_task_technician WHERE stt_sub_task_id = $1 AND stt_order_technician_id = $2",
                 [subTaskId, otId]
             );
+            if (existingStt.rows.length === 0) {
+                await conn.query(
+                    "INSERT INTO sub_task_technician (stt_sub_task_id, stt_order_technician_id) VALUES ($1, $2)",
+                    [subTaskId, otId]
+                );
+            }
 
             result = {
                 isError: false,
@@ -205,6 +226,41 @@ module.exports = {
             result = {
                 isError: false,
                 data: "ยกเลิกสำเร็จ",
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            result = {
+                isError: true,
+                data: "",
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+
+            return result;
+        }
+    },
+
+    updateSubTaskStatus: async (subTaskId, statusId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+
+            var sql = `
+                UPDATE sub_task 
+                SET st_sub_task_status_id = $1 
+                WHERE st_id = $2;
+            `;
+
+            await conn.query(sql, [statusId, subTaskId]);
+
+            result = {
+                isError: false,
+                data: "สำเร็จ",
                 errorMessage: ""
             };
 
