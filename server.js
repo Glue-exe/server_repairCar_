@@ -313,6 +313,12 @@ app.put("/api/employee", checkAccessToken, async (req, res) => {
     res.json(response);
 });
 
+app.put("/api/employee/status", checkAccessToken, async (req, res) => {
+    const { emp_id, acc_status_id } = req.body;
+    const response = await empModel.updateEmployeeStatus(emp_id, acc_status_id);
+    res.json(response);
+});
+
 app.delete("/api/employee", checkAccessToken, async (req, res) => {
     const empId = req.body.emp_id;
     const response = await empModel.deleteEmployee(empId);

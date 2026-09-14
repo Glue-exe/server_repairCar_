@@ -39,7 +39,8 @@ module.exports = {
             conn = await pool.connect();
 
             var sql = "SELECT acc_username AS account_username, acc_username AS username FROM account WHERE "
-                + "encode(digest(acc_username || '&' || $1, 'sha256'), 'hex') = $2";
+                + "encode(digest(acc_username || '&' || $1, 'sha256'), 'hex') = $2 "
+                + "AND acc_status_id = 1";
 
             var rows = await conn.query(sql, [dateUtils.getCurrentDateForToken(), authenRequest]);
 
