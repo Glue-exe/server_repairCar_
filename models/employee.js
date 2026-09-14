@@ -10,27 +10,36 @@ module.exports = {
 
             var sql = `
                 SELECT 
-                    e.emp_id AS emp_id,
+                    e.emp_id,
+                    e.emp_title_id,
+                    t.t_name,
+                    e.emp_first_name,
+                    e.emp_last_name,
+                    e.emp_phone,
+                    e.emp_current_salary,
+                    a.acc_id,
+                    a.acc_username,
+                    a.acc_username AS username,
+                    a.acc_role_id,
+                    r.ar_name,
+                    COALESCE(a.acc_status_id, 1) AS acc_status_id,
                     e.emp_id AS id,
                     e.emp_title_id AS title_id,
                     t.t_name AS title_name,
-                    e.emp_first_name AS emp_firstname,
                     e.emp_first_name AS first_name,
-                    e.emp_last_name AS emp_lastname,
+                    e.emp_first_name AS emp_firstname,
                     e.emp_last_name AS last_name,
-                    CONCAT(t.t_name, e.emp_first_name, ' ', e.emp_last_name) AS emp_fullname,
-                    e.emp_phone AS emp_phone,
+                    e.emp_last_name AS emp_lastname,
                     e.emp_phone AS phone,
-                    a.acc_role_id AS user_role_id,
-                    r.ar_name AS user_role_name,
-                    e.emp_current_salary AS emp_salary,
+                    e.emp_phone AS emp_phone,
                     e.emp_current_salary AS current_salary,
-                    COALESCE(s.as_name, 'ทำงานอยู่') AS emp_active
+                    e.emp_current_salary AS emp_salary,
+                    a.acc_role_id AS user_role_id,
+                    r.ar_name AS user_role_name
                 FROM public.employee e
                 LEFT JOIN public.title t ON e.emp_title_id = t.t_id
                 LEFT JOIN public.account a ON e.emp_id = a.acc_employee_id
                 LEFT JOIN public.account_role r ON a.acc_role_id = r.ar_id
-                LEFT JOIN public.account_status s ON a.acc_status_id = s.as_id
                 ORDER BY e.emp_id ASC;
             `;
 
@@ -236,6 +245,32 @@ module.exports = {
             if(conn)
                 conn.release();
 
+            return result;
+        }
+    },
+
+    updateEmployeeStatus: async (empId, statusId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            const sql = "UPDATE account SET acc_status_id = $1 WHERE acc_employee_id = $2";
+            await conn.query(sql, [statusId, empId]);
+
+            result = {
+                isError: false,
+                data: "อัปเดตสถานะสำเร็จ",
+                errorMessage: ""
+            };
+        } catch (error) {
+            result = {
+                isError: true,
+                data: "",
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn) conn.release();
             return result;
         }
     }
