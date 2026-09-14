@@ -22,6 +22,7 @@ const vehicle2Model = require('./models/vehicle2.js');
 const order2Model = require('./models/order2.js');
 const serviceModel = require('./models/service.js');
 const subTaskModel = require('./models/sub_task.js');
+const partRequisitionModel = require('./models/part_requisition.js');
 
 const app = express();
 
@@ -254,6 +255,12 @@ app.post("/api/sub_task/cancel", checkAccessToken, async (req, res) => {
     res.json(response);
 });
 
+app.post("/api/sub_task/update_status", checkAccessToken, async (req, res) => {
+    const { sub_task_id, status_id } = req.body;
+    const response = await subTaskModel.updateSubTaskStatus(sub_task_id, status_id);
+    res.json(response);
+});
+
 app.get("/api/priority", checkAccessToken, async (req, res) => {
     const response = await order2Model.getPriorities();
     res.json(response);
@@ -428,6 +435,24 @@ app.post("/api/vehicle_orders", async (req, res) => {
 
 app.post("/api/create_order", async (req, res) => {
     const response = await order2Model.createOrder(req.body);
+    res.json(response);
+});
+
+// Part Requisition Endpoints
+app.get("/api/compatible_parts", async (req, res) => {
+    const subTaskId = req.query.sub_task_id;
+    const response = await partRequisitionModel.getCompatibleParts(subTaskId);
+    res.json(response);
+});
+
+app.get("/api/request_parts", async (req, res) => {
+    const subTaskId = req.query.sub_task_id;
+    const response = await partRequisitionModel.getRequestPartsBySubTaskId(subTaskId);
+    res.json(response);
+});
+
+app.post("/api/request_part", async (req, res) => {
+    const response = await partRequisitionModel.createRequestPart(req.body);
     res.json(response);
 });
 
