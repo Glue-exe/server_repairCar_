@@ -98,43 +98,13 @@ module.exports = {
                     o.o_created_at,
                     v.v_license_plate,
                     v.v_color,
+                    v.v_year,
                     vb.vb_name AS brand_name,
                     vm.vm_name AS model_name,
                     c.cus_id,
                     c.cus_first_name,
                     c.cus_last_name,
-                    c.cus_phone,
-                    (
-                        SELECT COUNT(*)::int 
-                        FROM order_technician ot 
-                        WHERE ot.ot_order_id = o.o_id
-                    ) AS technician_count,
-                    COALESCE(
-                        (
-                            SELECT json_agg(
-                                json_build_object(
-                                    'account_id', acc.acc_id,
-                                    'firstname', emp.emp_first_name,
-                                    'lastname', emp.emp_last_name,
-                                    'role_name', ar.ar_name
-                                )
-                            )
-                            FROM order_technician ot
-                            INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
-                            INNER JOIN account_role ar ON acc.acc_role_id = ar.ar_id
-                            INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
-                            WHERE ot.ot_order_id = o.o_id
-                        ),
-                        '[]'::json
-                    ) AS technicians,
-                    COALESCE(
-                        (
-                            SELECT json_agg(oi.oi_image_url) 
-                            FROM order_image oi 
-                            WHERE oi.oi_order_id = o.o_id
-                        ),
-                        '[]'::json
-                    ) AS images
+                    c.cus_phone
                 FROM orders o
                 INNER JOIN order_status os ON o.o_order_status_id = os.os_id
                 INNER JOIN priority p ON o.o_priority_id = p.p_id
@@ -145,11 +115,37 @@ module.exports = {
                 ORDER BY o.o_created_at DESC;
             `;
 
-            const rows = await conn.query(sql);
+            const orderRes = await conn.query(sql);
+            const orders = orderRes.rows;
+
+            for (let order of orders) {
+                const techRes = await conn.query(`
+                    SELECT 
+                        acc.acc_id AS account_id,
+                        emp.emp_first_name AS firstname,
+                        emp.emp_last_name AS lastname,
+                        ar.ar_name AS role_name
+                    FROM order_technician ot
+                    INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
+                    INNER JOIN account_role ar ON acc.acc_role_id = ar.ar_id
+                    INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                    WHERE ot.ot_order_id = $1;
+                `, [order.o_id]);
+
+                const imgRes = await conn.query(`
+                    SELECT oi_image_url 
+                    FROM order_image 
+                    WHERE oi_order_id = $1;
+                `, [order.o_id]);
+
+                order.technicians = techRes.rows;
+                order.technician_count = techRes.rows.length;
+                order.images = imgRes.rows.map(r => r.oi_image_url);
+            }
 
             result = {
                 isError: false,
-                data: rows.rows,
+                data: orders,
                 errorMessage: ""
             };
 
@@ -157,6 +153,89 @@ module.exports = {
             return {
                 isError: true,
                 data: [],
+                errorMessage: error.message
+            };
+
+        } finally {
+            if (conn)
+                conn.release();
+
+            return result;
+        }
+    },
+
+    getOrderById: async (orderId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+
+            var sql = `
+                SELECT 
+                    o.o_id,
+                    o.o_vehicle_id,
+                    o.o_symptom,
+                    o.o_order_status_id,
+                    os.os_name,
+                    o.o_priority_id,
+                    p.p_name AS priority_name,
+                    o.o_created_at,
+                    v.v_license_plate,
+                    v.v_color,
+                    v.v_year,
+                    vb.vb_name AS brand_name,
+                    vm.vm_name AS model_name,
+                    c.cus_id,
+                    c.cus_first_name,
+                    c.cus_last_name,
+                    c.cus_phone
+                FROM orders o
+                INNER JOIN order_status os ON o.o_order_status_id = os.os_id
+                INNER JOIN priority p ON o.o_priority_id = p.p_id
+                INNER JOIN vehicle v ON o.o_vehicle_id = v.v_id
+                INNER JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
+                INNER JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
+                INNER JOIN customer c ON v.v_customer_id = c.cus_id
+                WHERE o.o_id = $1;
+            `;
+
+            const orderRes = await conn.query(sql, [orderId]);
+            const order = orderRes.rows[0];
+
+            const techRes = await conn.query(`
+                SELECT 
+                    acc.acc_id AS account_id,
+                    emp.emp_first_name AS firstname,
+                    emp.emp_last_name AS lastname,
+                    ar.ar_name AS role_name
+                FROM order_technician ot
+                INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
+                INNER JOIN account_role ar ON acc.acc_role_id = ar.ar_id
+                INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                WHERE ot.ot_order_id = $1;
+            `, [orderId]);
+
+            const imgRes = await conn.query(`
+                SELECT oi_image_url 
+                FROM order_image 
+                WHERE oi_order_id = $1;
+            `, [orderId]);
+
+            order.technicians = techRes.rows;
+            order.technician_count = techRes.rows.length;
+            order.images = imgRes.rows.map(r => r.oi_image_url);
+
+            result = {
+                isError: false,
+                data: order,
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            return {
+                isError: true,
+                data: "",
                 errorMessage: error.message
             };
 
@@ -182,40 +261,43 @@ module.exports = {
                     o.o_symptom,
                     o.o_order_status_id,
                     os.os_name,
-                    o.o_created_at,
-                    COALESCE(
-                        (SELECT json_agg(oi.oi_image_url) FROM order_image oi WHERE oi.oi_order_id = o.o_id),
-                        '[]'::json
-                    ) AS images,
-                    COALESCE(
-                        (
-                            SELECT json_agg(
-                                json_build_object(
-                                    'account_id', acc.acc_id,
-                                    'firstname', emp.emp_first_name,
-                                    'lastname', emp.emp_last_name,
-                                    'role_name', ar.ar_name
-                                )
-                            )
-                            FROM order_technician ot
-                            INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
-                            INNER JOIN account_role ar ON acc.acc_role_id = ar.ar_id
-                            INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
-                            WHERE ot.ot_order_id = o.o_id
-                        ),
-                        '[]'::json
-                    ) AS technicians
+                    o.o_created_at
                 FROM orders o
                 INNER JOIN order_status os ON o.o_order_status_id = os.os_id
                 WHERE o.o_vehicle_id = $1
                 ORDER BY o.o_created_at DESC;
             `;
 
-            const rows = await conn.query(sql, [vehicleId]);
+            const orderRes = await conn.query(sql, [vehicleId]);
+            const orders = orderRes.rows;
+
+            for (let order of orders) {
+                const techRes = await conn.query(`
+                    SELECT 
+                        acc.acc_id AS account_id,
+                        emp.emp_first_name AS firstname,
+                        emp.emp_last_name AS lastname,
+                        ar.ar_name AS role_name
+                    FROM order_technician ot
+                    INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
+                    INNER JOIN account_role ar ON acc.acc_role_id = ar.ar_id
+                    INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                    WHERE ot.ot_order_id = $1;
+                `, [order.o_id]);
+
+                const imgRes = await conn.query(`
+                    SELECT oi_image_url 
+                    FROM order_image 
+                    WHERE oi_order_id = $1;
+                `, [order.o_id]);
+
+                order.technicians = techRes.rows;
+                order.images = imgRes.rows.map(r => r.oi_image_url);
+            }
 
             result = {
                 isError: false,
-                data: rows.rows,
+                data: orders,
                 errorMessage: ""
             };
 
