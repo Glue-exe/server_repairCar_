@@ -23,6 +23,7 @@ const order2Model = require('./models/order2.js');
 const serviceModel = require('./models/service.js');
 const subTaskModel = require('./models/sub_task.js');
 const partRequisitionModel = require('./models/part_requisition.js');
+const approvalPartModel = require('./models/approval_part.js');
 
 const app = express();
 
@@ -276,6 +277,12 @@ app.get("/api/all_orders", checkAccessToken, async (req, res) => {
     res.json(response);
 });
 
+app.get("/api/order_by_id", checkAccessToken, async (req, res) => {
+    const orderId = req.query.order_id;
+    const response = await order2Model.getOrderById(orderId);
+    res.json(response);
+});
+
 app.get("/api/order/technicians", checkAccessToken, async (req, res) => {
     const orderId = req.query.order_id;
     const response = await order2Model.getOrderTechnicians(orderId);
@@ -453,6 +460,16 @@ app.get("/api/request_parts", async (req, res) => {
 
 app.post("/api/request_part", async (req, res) => {
     const response = await partRequisitionModel.createRequestPart(req.body);
+    res.json(response);
+});
+
+app.get("/api/approval_part", async (req, res) => {
+    const response = await approvalPartModel.getApprovalPart();
+    res.json(response);
+});
+
+app.post("/api/approval_part", async (req, res) => {
+    const response = await approvalPartModel.postApprovalPart(req.body);
     res.json(response);
 });
 

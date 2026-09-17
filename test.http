@@ -134,3 +134,7 @@ Content-Type: application/json
     "o_order_status_id": 1,
     "o_created_by_account_id": 1
 }
+
+###
+GET http://localhost:3000/api/approval_part HTTP/1.1
+Content-Type: application/json
