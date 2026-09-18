@@ -273,13 +273,14 @@ app.get("/api/order_status", checkAccessToken, async (req, res) => {
 });
 
 app.get("/api/all_orders", checkAccessToken, async (req, res) => {
-    const response = await order2Model.getAllOrders();
+    const response = await order2Model.getAllOrders(req.query);
     res.json(response);
 });
 
 app.get("/api/order_by_id", checkAccessToken, async (req, res) => {
     const orderId = req.query.order_id;
-    const response = await order2Model.getOrderById(orderId);
+    const userId = req.query.user_id;
+    const response = await order2Model.getOrderById(orderId, userId);
     res.json(response);
 });
 

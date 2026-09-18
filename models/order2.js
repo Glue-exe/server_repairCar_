@@ -79,12 +79,59 @@ module.exports = {
         }
     },
 
-    getAllOrders: async () => {
+    getAllOrders: async (filters = {}) => {
         let conn;
         let result;
 
         try {
             conn = await pool.connect();
+
+            // conditions: ใช้เก็บข้อความเงื่อนไข SQL เช่น ['o.o_priority_id = $1', 'o.o_order_status_id = $2']
+            // params: ใช้เก็บค่าข้อมูลจริงที่ส่งไปแทนที่ $1, $2 เพื่อความปลอดภัย (ป้องกัน SQL Injection)
+            // หมายเหตุ: .push(...) คือคำสั่งของ JavaScript ในการ "เพิ่มข้อมูลเข้าไปต่อท้ายใน Array"
+            let conditions = [];
+            let params = [];
+
+            // 1. กรองตามระดับความสำคัญ (ถ้ามีส่ง priority_id มา)
+            if (filters.priority_id) {
+                // .push(): เพิ่มค่าตัวเลข priority_id เข้าไปเก็บไว้ใน Array params
+                params.push(filters.priority_id);
+                // $${params.length} คือการใส่เลขลำดับอัตโนมัติ เช่น ตัวแรก params.length = 1 จะได้เป็น $1
+                // .push(): เพิ่มข้อความเงื่อนไข SQL เข้าไปเก็บไว้ใน Array conditions
+                conditions.push(`o.o_priority_id = $${params.length}`);
+            }
+
+            // 2. กรองตามสถานะงานซ่อม (ถ้ามีส่ง status_id มา)
+            if (filters.status_id) {
+                // .push(): เพิ่มค่าตัวเลข status_id เข้าไปเก็บไว้ใน Array params
+                params.push(filters.status_id);
+                // ตัวถัดไป params.length = 2 จะได้เป็น $2 โดยไม่ต้องพิมพ์เลขเอง
+                // .push(): เพิ่มข้อความเงื่อนไข SQL เข้าไปเก็บไว้ใน Array conditions
+                conditions.push(`o.o_order_status_id = $${params.length}`);
+            }
+
+            // 3. กรองตามสถานะช่างรับงาน (1 = ยังไม่มีช่างรับ, 2 = มีช่างรับแล้ว, 3 = งานที่ฉันกดรับ)
+            if (filters.tech_filter == 1) {
+                // NOT EXISTS: เป็นคำสั่ง SQL เช็คว่า "ต้องไม่มี" ข้อมูลในตาราง order_technician (คือยังไม่มีช่างรับงานนี้)
+                conditions.push(`NOT EXISTS (SELECT 1 FROM order_technician WHERE ot_order_id = o.o_id)`);
+            } else if (filters.tech_filter == 2) {
+                // EXISTS: เป็นคำสั่ง SQL เช็คว่า "ต้องมี" ข้อมูลในตาราง order_technician อย่างน้อย 1 คน (มีช่างรับงานแล้ว)
+                conditions.push(`EXISTS (SELECT 1 FROM order_technician WHERE ot_order_id = o.o_id)`);
+            } else if (filters.tech_filter == 3 && filters.user_id) {
+                // EXISTS: เช็คว่าในตาราง order_technician มี account_id ตรงกับฉัน (งานที่ฉันกดรับ)
+                params.push(filters.user_id);
+                conditions.push(`EXISTS (SELECT 1 FROM order_technician WHERE ot_order_id = o.o_id AND ot_account_id = $${params.length})`);
+            }
+
+            // นำเงื่อนไขทั้งหมดใน Array มารวมเป็นข้อความเดียวกันด้วยคำสั่ง .join(" AND ")
+            // หมายเหตุ: .join("...") คือคำสั่งของ JavaScript ในการ "เอาสมาชิกทุกตัวใน Array มาร้อยต่อกันเป็น String เดียว โดยคั่นด้วยคำที่กำหนด"
+            // ตัวอย่าง: ถ้า conditions = ['o.o_priority_id = $1', 'o.o_order_status_id = $2']
+            // ผลลัพธ์ของ conditions.join(" AND ") จะได้เป็น: 'o.o_priority_id = $1 AND o.o_order_status_id = $2'
+            // แต่ถ้าผู้ใช้ไม่ได้เลือกตัวกรองอะไรเลย conditions จะว่าง whereClause ก็จะว่างเปล่า "" (ส่งผลให้ดึงข้อมูลทั้งหมด Get All)
+            let whereClause = "";
+            if (conditions.length > 0) {
+                whereClause = "WHERE " + conditions.join(" AND ");
+            }
 
             var sql = `
                 SELECT 
@@ -112,10 +159,11 @@ module.exports = {
                 INNER JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
                 INNER JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
                 INNER JOIN customer c ON v.v_customer_id = c.cus_id
+                ${whereClause}
                 ORDER BY o.o_created_at DESC;
             `;
 
-            const orderRes = await conn.query(sql);
+            const orderRes = await conn.query(sql, params);
             const orders = orderRes.rows;
 
             for (let order of orders) {
@@ -141,6 +189,18 @@ module.exports = {
                 order.technicians = techRes.rows;
                 order.technician_count = techRes.rows.length;
                 order.images = imgRes.rows.map(r => r.oi_image_url);
+
+                // ตรวจสอบว่าผู้ใช้ที่กำลังดูอยู่นี้ (user_id) ได้กดรับงานนี้ไปแล้วหรือไม่
+                // เพื่อส่งค่า true/false ไปให้หน้าบ้าน (Flutter) นำไปแสดงสีปุ่มได้เลย
+                order.is_accepted_by_me = false;
+                if (filters.user_id) {
+                    for (let t of techRes.rows) {
+                        if (t.account_id == filters.user_id) {
+                            order.is_accepted_by_me = true; // ฉันรับงานนี้แล้ว
+                            break;
+                        }
+                    }
+                }
             }
 
             result = {
@@ -164,7 +224,7 @@ module.exports = {
         }
     },
 
-    getOrderById: async (orderId) => {
+    getOrderById: async (orderId, userId = null) => {
         let conn;
         let result;
 
@@ -225,6 +285,17 @@ module.exports = {
             order.technicians = techRes.rows;
             order.technician_count = techRes.rows.length;
             order.images = imgRes.rows.map(r => r.oi_image_url);
+
+            // ตรวจสอบว่า user_id นี้กดรับงานไปแล้วหรือไม่
+            order.is_accepted_by_me = false;
+            if (userId) {
+                for (let t of techRes.rows) {
+                    if (t.account_id == userId) {
+                        order.is_accepted_by_me = true;
+                        break;
+                    }
+                }
+            }
 
             result = {
                 isError: false,
