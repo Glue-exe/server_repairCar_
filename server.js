@@ -180,7 +180,7 @@ const checkAccessToken = (req, res, next) => {
         });
 }
 
-app.get("/api/dashboard/summary", checkAccessToken, async (req, res) => {
+app.get("/api/dashboard/summary", async (req, res) => {
     const response = await dashboardModel.getSummaryData();
     res.json(response);
 });
