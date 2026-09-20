@@ -24,6 +24,9 @@ const serviceModel = require('./models/service.js');
 const subTaskModel = require('./models/sub_task.js');
 const partRequisitionModel = require('./models/part_requisition.js');
 const approvalPartModel = require('./models/approval_part.js');
+const invoiceModel = require('./models/invoice.js');
+const paymentMethodModel = require('./models/payment_method.js');
+const paymentStatusModel = require('./models/payment_status.js');
 
 const app = express();
 
@@ -471,6 +474,36 @@ app.get("/api/approval_part", async (req, res) => {
 
 app.post("/api/approval_part", async (req, res) => {
     const response = await approvalPartModel.postApprovalPart(req.body);
+    res.json(response);
+});
+
+app.post("/api/createInvoice", async (req, res) => {
+    const response = await invoiceModel.postCreateInvoice(req.body);
+    res.json(response);
+});
+
+app.post("/api/getInvoice", async (req, res) => {
+    const response = await invoiceModel.getInvoice(req.body);
+    res.json(response);
+});
+
+app.get("/api/payment_methods", async (req, res) => {
+    const response = await paymentMethodModel.getPaymentMethod();
+    res.json(response);
+});
+
+app.get("/api/payment_statuses", async (req, res) => {
+    const response = await paymentStatusModel.getPaymentStatus();
+    res.json(response);
+});
+
+app.post("/api/updateInvoiceMethod", async (req, res) => {
+    const response = await invoiceModel.updatePaymentMethod(req.body);
+    res.json(response);
+});
+
+app.post("/api/updateInvoiceStatus", async (req, res) => {
+    const response = await invoiceModel.updatePaymentStatus(req.body);
     res.json(response);
 });
 
