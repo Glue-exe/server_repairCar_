@@ -42,9 +42,31 @@ module.exports = {
         let conn;
         let result;
 
+        const orderId = data.st_order_id;
+        const accId = data.accId;
+
         try {
             conn = await pool.connect();
 
+            // check order_technician
+
+            var checkSql = `
+            SELECT ot_account_id
+            FROM order_technician
+            WHERE ot_order_id = $1 AND ot_account_id = $2;
+            `;
+
+           const checkRes = await conn.query(checkSql, [orderId, accId]);
+
+            if(checkRes.rows.length === 0) {
+                result = {
+                    isError: true,
+                    data: [],
+                    errorMessage: 'คุณยังไม่ได้กดรับงานนี้',
+                }
+                return;
+            }
+            
             var sql = `
                 INSERT INTO sub_task (
                     st_order_id,
