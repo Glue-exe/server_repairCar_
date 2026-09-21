@@ -9,6 +9,7 @@ module.exports = {
 
             var searchLicenseplateSQL = `
                 SELECT
+                    cus.cus_id,
                     veh.v_id,
                     cus.cus_first_name || ' ' || cus.cus_last_name AS fullname,
                     cus.cus_phone,
@@ -55,6 +56,7 @@ module.exports = {
 
             var searchPhoneSQL = `
                 SELECT
+                    customer.cus_id,
                     vehicle.v_id,
                     customer.cus_first_name || ' ' || customer.cus_last_name AS fullname,
                     customer.cus_phone,
