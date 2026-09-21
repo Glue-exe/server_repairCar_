@@ -74,5 +74,45 @@ module.exports = {
 
             return result;
         }
+    },
+
+    add_vehicle_by_cus: async (data) => {
+        let conn;
+        try {
+            conn = await pool.connect();
+
+            var sql = `
+                INSERT INTO vehicle (
+                    v_license_plate,
+                    v_vehicle_model_id,
+                    v_year,
+                    v_color,
+                    v_customer_id
+                ) VALUES ($1, $2, $3, $4, $5)
+                RETURNING v_id;
+            `;
+
+            const rows = await conn.query(sql, [
+                data.v_license_plate,
+                data.v_vehicle_model_id,
+                data.v_year,
+                data.v_color,
+                data.v_customer_id
+            ]);
+
+            return {
+                isError: false,
+                data: rows.rows[0],
+                errorMessage: ""
+            };
+        } catch (error) {
+            return {
+                isError: true,
+                data: "",
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn) conn.release();
+        }
     }
 };

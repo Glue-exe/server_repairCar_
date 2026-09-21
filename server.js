@@ -483,16 +483,21 @@ app.post("/api/add_customer", async (req, res) => {
   res.json(response);
 });
 
+app.post("/api/add_vehicle_by_cus", async (req, res) => {
+  const response = await addnewcustomer.add_vehicle_by_cus(req.body);
+  res.json(response);
+});
+
 app.post("/api/vehicle_orders", async (req, res) => {
   const vehicleId = req.body.vehicle_id;
   const response = await order2Model.getOrdersByVehicleId(vehicleId);
   res.json(response);
 });
 
-// app.post("/api/create_order", async (req, res) => {
-//   const response = await order2Model.createOrder(req.body);
-//   res.json(response);
-// });
+app.post("/api/create_order", async (req, res) => {
+  const response = await order2Model.createOrder(req.body);
+  res.json(response);
+});
 
 // Part Requisition Endpoints
 app.get("/api/compatible_parts", async (req, res) => {
