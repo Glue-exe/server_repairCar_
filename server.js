@@ -518,8 +518,18 @@ app.post("/api/request_part", async (req, res) => {
   res.json(response);
 });
 
-app.get("/api/approval_part", async (req, res) => {
-  const response = await approvalPartModel.getApprovalPart();
+app.get("/api/approval_part_status_one", async (req, res) => {
+  const response = await approvalPartModel.getApprovalPartStatusOne();
+  res.json(response);
+});
+
+app.get("/api/approval_part_status_two", async (req, res) => {
+  const response = await approvalPartModel.getApprovalPartStatusTwo();
+  res.json(response);
+});
+
+app.get("/api/approval_part_status_three", async (req, res) => {
+  const response = await approvalPartModel.getApprovalPartStatusThree();
   res.json(response);
 });
 
