@@ -208,7 +208,7 @@ app.get("/api/income/monthly_history", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.get("/api/employee", checkAccessToken, async (req, res) => {
+app.get("/api/get_employee", async (req, res) => {
   const response = await empModel.getEmployee();
   res.json(response);
 });

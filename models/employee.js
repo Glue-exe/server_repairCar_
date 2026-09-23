@@ -19,27 +19,27 @@ module.exports = {
                     e.emp_current_salary,
                     a.acc_id,
                     a.acc_username,
-                    a.acc_username AS username,
+                    a.acc_username,
                     a.acc_role_id,
                     r.ar_name,
-                    COALESCE(a.acc_status_id, 1) AS acc_status_id,
-                    e.emp_id AS id,
-                    e.emp_title_id AS title_id,
-                    t.t_name AS title_name,
-                    e.emp_first_name AS first_name,
-                    e.emp_first_name AS emp_firstname,
-                    e.emp_last_name AS last_name,
-                    e.emp_last_name AS emp_lastname,
-                    e.emp_phone AS phone,
-                    e.emp_phone AS emp_phone,
-                    e.emp_current_salary AS current_salary,
-                    e.emp_current_salary AS emp_salary,
-                    a.acc_role_id AS user_role_id,
-                    r.ar_name AS user_role_name
+                    a.acc_status_id,
+                    e.emp_id,
+                    e.emp_title_id,
+                    t.t_name,
+                    e.emp_first_name,
+                    e.emp_first_name,
+                    e.emp_last_name,
+                    e.emp_last_name,
+                    e.emp_phone,
+                    e.emp_phone,
+                    e.emp_current_salary,
+                    e.emp_current_salary,
+                    a.acc_role_id,
+                    r.ar_name
                 FROM public.employee e
-                LEFT JOIN public.title t ON e.emp_title_id = t.t_id
-                LEFT JOIN public.account a ON e.emp_id = a.acc_employee_id
-                LEFT JOIN public.account_role r ON a.acc_role_id = r.ar_id
+                INNER JOIN public.title t ON e.emp_title_id = t.t_id
+                INNER JOIN public.account a ON e.emp_id = a.acc_employee_id
+                INNER JOIN public.account_role r ON a.acc_role_id = r.ar_id
                 ORDER BY e.emp_id ASC;
             `;
 
@@ -72,27 +72,26 @@ module.exports = {
             conn = await pool.connect();
             await conn.query('BEGIN');
 
-            let salary = 0;
-            if (parseInt(data.user_role_id) === 2) {
-                salary = 15000.00;
-            } else if (parseInt(data.user_role_id) === 3) {
-                salary = 12000.00;
-            }
-
             const empSql = `
-                INSERT INTO employee
-                    (emp_title_id, emp_first_name, emp_last_name, emp_phone, emp_current_salary)
-                VALUES 
+                INSERT INTO employee 
+                (
+                    emp_title_id,
+                    emp_first_name,
+                    emp_last_name,
+                    emp_phone,
+                    emp_current_salary
+                )
+                    VALUES
                     ($1, $2, $3, $4, $5)
-                RETURNING emp_id, emp_id AS id
+                RETURNING emp_id
             `;
 
             const empParams = [
-                data.title_id || data.emp_title_id, 
-                data.firstname || data.first_name || data.emp_first_name, 
-                data.lastname || data.last_name || data.emp_last_name,
-                data.phone || data.emp_phone, 
-                salary
+                data.emp_title_id, 
+                data.emp_first_name, 
+                data.emp_last_name, 
+                data.emp_phone, 
+                data.emp_current_salary
             ];
 
             const empRes = await conn.query(empSql, empParams);
@@ -100,17 +99,24 @@ module.exports = {
 
             const accountSql = `
                 INSERT INTO account 
-                    (acc_username, acc_password_hash, acc_role_id, acc_employee_id, acc_created_by_account_id, acc_status_id) 
-                VALUES 
+                    (
+                        acc_username,
+                        acc_password_hash,
+                        acc_role_id,
+                        acc_employee_id,
+                        acc_created_by_account_id,
+                        acc_status_id
+                     ) 
+                        VALUES 
                     ($1, $2, $3, $4, $5, $6)
             `;
 
             const accountParams = [
-                data.username || data.acc_username, 
-                data.password || data.acc_password_hash, 
-                data.user_role_id || data.acc_role_id, 
+                data.acc_username, 
+                data.acc_password_hash, 
+                data.acc_role_id, 
                 newEmpId,
-                createByEmpId || 1, 
+                createByEmpId, 
                 1
             ];
 
@@ -147,14 +153,8 @@ module.exports = {
 
         try {
             conn = await pool.connect();
-            await conn.query('BEGIN');
 
-            let salary = 0;
-            if (parseInt(data.user_role_id) === 2) {
-                salary = 15000.00;
-            } else if (parseInt(data.user_role_id) === 3) {
-                salary = 12000.00;
-            }
+            await conn.query('BEGIN');
 
             const empSql = `
                 UPDATE employee
@@ -167,12 +167,12 @@ module.exports = {
             `;
 
             const empParams = [
-                data.title_id || data.emp_title_id, 
-                data.firstname || data.first_name || data.emp_first_name, 
-                data.lastname || data.last_name || data.emp_last_name, 
-                data.phone || data.emp_phone, 
-                salary,
-                data.emp_id || data.id
+                data.emp_title_id,
+                data.emp_first_name,
+                data.emp_last_name,
+                data.emp_phone,
+                data.emp_current_salary,
+                data.emp_id
             ];
 
             await conn.query(empSql, empParams);
@@ -182,7 +182,8 @@ module.exports = {
                 SET acc_role_id = $1
                 WHERE acc_employee_id = $2
             `;
-            const accountParams = [data.user_role_id || data.acc_role_id, data.emp_id || data.id];
+            
+            const accountParams = [data.acc_role_id, data.emp_id];
 
             await conn.query(accountSql, accountParams);
 
