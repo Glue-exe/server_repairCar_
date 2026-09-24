@@ -235,7 +235,9 @@ module.exports = {
             };
 
         } catch (error) {
+            
             if (conn) await conn.query('ROLLBACK');
+
             result = {
                 isError: true,
                 data: "",
