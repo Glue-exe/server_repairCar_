@@ -170,3 +170,16 @@ Content-Type: application/json
 {
     
 }
+
+###
+GET http://localhost:3000/api/salary_history HTTP/1.1
+
+###
+PUT http://localhost:3000/api/salary_history HTTP/1.1
+Content-Type: application/json
+
+{
+    "sh_emp_id": 1,
+    "sh_salary_amount": 68000,
+    "sh_effective_date": "2026-09-25"
+}

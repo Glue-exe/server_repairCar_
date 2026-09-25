@@ -28,6 +28,7 @@ const approvalPartModel = require("./models/approval_part.js");
 const invoiceModel = require("./models/invoice.js");
 const paymentMethodModel = require("./models/payment_method.js");
 const paymentStatusModel = require("./models/payment_status.js");
+const salaryHistoryModel = require("./models/salary_history.js");
 
 const app = express();
 
@@ -466,105 +467,116 @@ app.delete("/api/vehicle_year", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.post("/api/vehicle_search_licensePlate", async (req, res) => {
+app.post("/api/vehicle_search_licensePlate", checkAccessToken, async (req, res) => {
   const licenseplate = req.body.v_license_plate;
   const response = await vehicle2Model.searchLicenseplate(licenseplate);
   res.json(response);
 });
 
-app.post("/api/vehicle_search_phone", async (req, res) => {
+app.post("/api/vehicle_search_phone", checkAccessToken, async (req, res) => {
   const phone = req.body.phone;
   const response = await vehicle2Model.searchPhone(phone);
   res.json(response);
 });
 
-app.post("/api/add_customer", async (req, res) => {
+app.post("/api/add_customer", checkAccessToken, async (req, res) => {
   const response = await addnewcustomer.addCustomer(req.body);
   res.json(response);
 });
 
-app.post("/api/add_vehicle_by_cus", async (req, res) => {
+app.post("/api/add_vehicle_by_cus", checkAccessToken, async (req, res) => {
   const response = await addnewcustomer.add_vehicle_by_cus(req.body);
   res.json(response);
 });
 
-app.post("/api/vehicle_orders", async (req, res) => {
+app.post("/api/vehicle_orders", checkAccessToken, async (req, res) => {
   const vehicleId = req.body.vehicle_id;
   const response = await order2Model.getOrdersByVehicleId(vehicleId);
   res.json(response);
 });
 
-app.post("/api/create_order", async (req, res) => {
+app.post("/api/create_order", checkAccessToken, async (req, res) => {
   const response = await order2Model.createOrder(req.body);
   res.json(response);
 });
 
 // Part Requisition Endpoints
-app.get("/api/compatible_parts", async (req, res) => {
+app.get("/api/compatible_parts", checkAccessToken, async (req, res) => {
   const subTaskId = req.query.sub_task_id;
   const response = await partRequisitionModel.getCompatibleParts(subTaskId);
   res.json(response);
 });
 
-app.get("/api/request_parts", async (req, res) => {
+app.get("/api/request_parts", checkAccessToken, async (req, res) => {
   const subTaskId = req.query.sub_task_id;
   const response =
     await partRequisitionModel.getRequestPartsBySubTaskId(subTaskId);
   res.json(response);
 });
 
-app.post("/api/request_part", async (req, res) => {
+app.post("/api/request_part", checkAccessToken, async (req, res) => {
   const response = await partRequisitionModel.createRequestPart(req.body);
   res.json(response);
 });
 
-app.get("/api/approval_part_status_one", async (req, res) => {
+app.get("/api/approval_part_status_one", checkAccessToken, async (req, res) => {
   const response = await approvalPartModel.getApprovalPartStatusOne();
   res.json(response);
 });
 
-app.get("/api/approval_part_status_two", async (req, res) => {
+app.get("/api/approval_part_status_two", checkAccessToken, async (req, res) => {
   const response = await approvalPartModel.getApprovalPartStatusTwo();
   res.json(response);
 });
 
-app.get("/api/approval_part_status_three", async (req, res) => {
+app.get("/api/approval_part_status_three", checkAccessToken, async (req, res) => {
   const response = await approvalPartModel.getApprovalPartStatusThree();
   res.json(response);
 });
 
-app.post("/api/approval_part", async (req, res) => {
+app.post("/api/approval_part", checkAccessToken, async (req, res) => {
   const response = await approvalPartModel.postApprovalPart(req.body);
   res.json(response);
 });
 
-app.post("/api/createInvoice", async (req, res) => {
+app.post("/api/createInvoice", checkAccessToken, async (req, res) => {
   const response = await invoiceModel.postCreateInvoice(req.body);
   res.json(response);
 });
 
-app.post("/api/getInvoice", async (req, res) => {
+app.post("/api/getInvoice", checkAccessToken, async (req, res) => {
   const response = await invoiceModel.getInvoice(req.body);
   res.json(response);
 });
 
-app.get("/api/payment_methods", async (req, res) => {
+app.get("/api/payment_methods", checkAccessToken, async (req, res) => {
   const response = await paymentMethodModel.getPaymentMethod();
   res.json(response);
 });
 
-app.get("/api/payment_statuses", async (req, res) => {
+app.get("/api/payment_statuses", checkAccessToken, async (req, res) => {
   const response = await paymentStatusModel.getPaymentStatus();
   res.json(response);
 });
 
-app.post("/api/updateInvoiceMethod", async (req, res) => {
+app.post("/api/updateInvoiceMethod", checkAccessToken, async (req, res) => {
   const response = await invoiceModel.updatePaymentMethod(req.body);
   res.json(response);
 });
 
-app.post("/api/updateInvoiceStatus", async (req, res) => {
+app.post("/api/updateInvoiceStatus", checkAccessToken, async (req, res) => {
   const response = await invoiceModel.updatePaymentStatus(req.body);
+  res.json(response);
+});
+
+// salary history
+app.get("/api/salary_history", checkAccessToken, async (req, res) => {
+  const response = await salaryHistoryModel.getSalaryHistory();
+  res.json(response);
+});
+
+app.put("/api/salary_history", checkAccessToken, async (req, res) => {
+  const response = await salaryHistoryModel.putUpdateSalary(req.body);
   res.json(response);
 });
 
