@@ -138,3 +138,10 @@ Content-Type: application/json
 ###
 GET http://localhost:3000/api/approval_part HTTP/1.1
 Content-Type: application/json
+
+###
+GET http://localhost:3000/api/accountant/summary HTTP/1.1
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJ1c2VybmFtZSI6InNvbXNyaV9hY2NvdW50IiwiZW1wX2lkIjoyLCJmaXJzdG5hbWUiOiLguKrguKHguKjguKPguLUiLCJsYXN0bmFtZSI6IuC4lOC4teC5g-C4iCIsImZ1bGxfbmFtZSI6IuC4quC4oeC4qOC4o-C4tSDguJTguLXguYPguIgiLCJyb2xlX25hbWUiOiLguJ7guJnguLHguIHguIfguLLguJnguJrguLHguI3guIrguLUiLCJyb2xlX2lkIjoyLCJkYXRlIjoiMTgtMDktMjAyNiIsImlhdCI6MTc4OTczNzcwOCwiZXhwIjoxNzg5ODI0MTA4fQ.CnLq6vsaMUxfw0C8wb7q6ecmn6vTaHDxSbPNkSrc9PU
+Content-Type: application/json
+
+

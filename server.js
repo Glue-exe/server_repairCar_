@@ -24,6 +24,7 @@ const serviceModel = require('./models/service.js');
 const subTaskModel = require('./models/sub_task.js');
 const partRequisitionModel = require('./models/part_requisition.js');
 const approvalPartModel = require('./models/approval_part.js');
+const accountantModel = require('./models/accountant.js');
 
 const app = express();
 
@@ -161,6 +162,10 @@ const checkAccessToken = (req, res, next) => {
         token = req.query.token;
     } else if (req.body && req.body.token) {
         token = req.body.token;
+    }
+
+    if (token) {
+        token = token.replace(/^[<"']+|[>"']+$/g, '').trim();
     }
 
     jwt.verify(token)
@@ -471,6 +476,38 @@ app.get("/api/approval_part", async (req, res) => {
 
 app.post("/api/approval_part", async (req, res) => {
     const response = await approvalPartModel.postApprovalPart(req.body);
+    res.json(response);
+});
+
+// --- Accountant API Endpoints ---
+app.get("/api/accountant/summary", checkAccessToken, async (req, res) => {
+    const response = await accountantModel.getSummary();
+    res.json(response);
+});
+
+app.get("/api/accountant/orders", checkAccessToken, async (req, res) => {
+    const type = req.query.type || 'pending';
+    const search = req.query.search || '';
+    const response = await accountantModel.getOrders({ type, search });
+    res.json(response);
+});
+
+app.post("/api/accountant/pay", checkAccessToken, async (req, res) => {
+    const account_id = req.user?.user_id || req.user?.account_id || 1;
+    const { order_id, payment_method_id, parts_total, labor_total, total } = req.body;
+    const response = await accountantModel.payOrder({
+        order_id,
+        payment_method_id,
+        parts_total,
+        labor_total,
+        total,
+        account_id
+    });
+    res.json(response);
+});
+
+app.get("/api/accountant/payment_methods", checkAccessToken, async (req, res) => {
+    const response = await accountantModel.getPaymentMethods();
     res.json(response);
 });
 
