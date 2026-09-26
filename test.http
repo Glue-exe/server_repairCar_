@@ -182,4 +182,40 @@ Content-Type: application/json
     "sh_emp_id": 1,
     "sh_salary_amount": 68000,
     "sh_effective_date": "2026-09-25"
-}
+}
+
+### 
+GET http://localhost:3000/api/getPart HTTP/1.1
+
+###
+POST http://localhost:3000/api/postPart HTTP/1.1
+Content-Type: application/json
+
+    {
+    "part_name": "ปั้มเบรค",
+    "part_price": 1200,
+    "pc_id": 3,
+    "pb_id": 3,
+    "part_url": ""
+    }
+
+###
+PUT http://localhost:3000/api/putPart HTTP/1.1
+Content-Type: application/json
+
+    {
+        "part_id": 22,
+        "part_name": "น๊อตตี้",
+        "part_price": 1100,
+        "part_category_id": 3,
+        "part_brand_id": 3,
+        "part_url": "https://example.com/brake_rear.jpg"
+    }
+
+###
+DELETE http://localhost:3000/api/deletePart HTTP/1.1
+Content-Type: application/json
+
+    {
+        "part_id": 22
+    }

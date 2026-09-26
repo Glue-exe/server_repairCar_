@@ -404,11 +404,21 @@ app.put("/api/putPart", checkAccessToken, upload.single("file"), async (req, res
   res.json(response);
 });
 
-app.delete("/api/deletePart", checkAccessToken, async (req, res) => {
+app.delete("/api/deletePart",  async (req, res) => {
   const partId = req.body.part_id;
   const response = await partModel.deletePart(partId);
   res.json(response);
 });
+
+app.get("/api/category", checkAccessToken, async (req, res) => {
+  const response = await partModel.getPartCategories();
+  res.json(response);
+});
+app.get("/api/brand", checkAccessToken, async (req, res) => {
+  const response = await partModel.getPartBrands();
+  res.json(response);
+});
+
 
 // Vehicle Brand routes
 app.get("/api/vehicle_brand", checkAccessToken, async (req, res) => {
