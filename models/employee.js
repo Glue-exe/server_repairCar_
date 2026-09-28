@@ -18,28 +18,17 @@ module.exports = {
                     e.emp_phone,
                     e.emp_current_salary,
                     a.acc_id,
-                    a.acc_username,
+                    a.acc_employee_id,
                     a.acc_username,
                     a.acc_role_id,
-                    r.ar_name,
                     a.acc_status_id,
-                    e.emp_id,
-                    e.emp_title_id,
-                    t.t_name,
-                    e.emp_first_name,
-                    e.emp_first_name,
-                    e.emp_last_name,
-                    e.emp_last_name,
-                    e.emp_phone,
-                    e.emp_phone,
-                    e.emp_current_salary,
-                    e.emp_current_salary,
-                    a.acc_role_id,
-                    r.ar_name
-                FROM public.employee e
-                INNER JOIN public.title t ON e.emp_title_id = t.t_id
-                INNER JOIN public.account a ON e.emp_id = a.acc_employee_id
-                INNER JOIN public.account_role r ON a.acc_role_id = r.ar_id
+                    r.ar_name,
+                    s.as_name
+                FROM employee e
+                INNER JOIN title t ON e.emp_title_id = t.t_id
+                INNER JOIN account a ON e.emp_id = a.acc_employee_id
+                INNER JOIN account_role r ON a.acc_role_id = r.ar_id
+                INNER JOIN account_status s ON a.acc_status_id = s.as_id
                 ORDER BY e.emp_id ASC;
             `;
 
@@ -64,7 +53,7 @@ module.exports = {
         }
     },
 
-    addEmployee: async (data, createByEmpId) => {
+    addEmployee: async (data, createByAccountId) => {
         let conn;
         let result;
 
@@ -116,7 +105,7 @@ module.exports = {
                 data.acc_password_hash, 
                 data.acc_role_id, 
                 newEmpId,
-                createByEmpId, 
+                createByAccountId, 
                 1
             ];
 

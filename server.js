@@ -357,8 +357,8 @@ app.get("/api/user_role", checkAccessToken, async (req, res) => {
 });
 
 app.post("/api/employee", checkAccessToken, async (req, res) => {
-  const createByEmpId = req.user.emp_id;
-  const response = await empModel.addEmployee(req.body, createByEmpId);
+  const createByAccountId = req.user.user_id;
+  const response = await empModel.addEmployee(req.body, createByAccountId);
   res.json(response);
 });
 
