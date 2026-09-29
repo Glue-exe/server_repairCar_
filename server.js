@@ -357,8 +357,8 @@ app.get("/api/user_role", checkAccessToken, async (req, res) => {
 });
 
 app.post("/api/employee", checkAccessToken, async (req, res) => {
-  const createByEmpId = req.user.emp_id;
-  const response = await empModel.addEmployee(req.body, createByEmpId);
+  const createByAccountId = req.user.user_id;
+  const response = await empModel.addEmployee(req.body, createByAccountId);
   res.json(response);
 });
 
@@ -368,14 +368,20 @@ app.put("/api/employee", checkAccessToken, async (req, res) => {
 });
 
 app.put("/api/employee/status", checkAccessToken, async (req, res) => {
-  const { emp_id, acc_status_id } = req.body;
-  const response = await empModel.updateEmployeeStatus(emp_id, acc_status_id);
+  const { emp_id, is_active } = req.body;
+  const response = await empModel.updateEmployeeStatus(emp_id, is_active);
   res.json(response);
 });
 
 app.delete("/api/employee", checkAccessToken, async (req, res) => {
   const empId = req.body.emp_id;
   const response = await empModel.deleteEmployee(empId);
+  res.json(response);
+});
+
+app.put("/api/employee/restore", checkAccessToken, async (req, res) => {
+  const empId = req.body.emp_id;
+  const response = await empModel.restoreEmployee(empId);
   res.json(response);
 });
 
