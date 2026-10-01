@@ -22,7 +22,7 @@ module.exports = {
                     a.acc_employee_id,
                     a.acc_username,
                     a.acc_role_id,
-                    a.is_active,
+                    a.acc_is_active,
                     r.ar_name
                 FROM employee e
                 INNER JOIN title t ON e.emp_title_id = t.t_id
@@ -93,7 +93,7 @@ module.exports = {
                         acc_role_id,
                         acc_employee_id,
                         acc_created_by_account_id,
-                        is_active
+                        acc_is_active
                      ) 
                         VALUES 
                     ($1, $2, $3, $4, $5, $6)
@@ -193,7 +193,7 @@ module.exports = {
             const empSql = `UPDATE employee SET deleted_at = CURRENT_TIMESTAMP WHERE emp_id = $1`;
             await conn.query(empSql, [emp_id]);
 
-            const accountSql = `UPDATE account SET is_active = FALSE WHERE acc_employee_id = $1`;
+            const accountSql = `UPDATE account SET acc_is_active = FALSE WHERE acc_employee_id = $1`;
             await conn.query(accountSql, [emp_id]);
 
             await conn.query('COMMIT');
@@ -222,14 +222,14 @@ module.exports = {
         }
     },
 
-    updateEmployeeStatus: async (empId, isActive) => {
+    updateEmployeeStatus: async (empId, accIsActive) => {
         let conn;
         let result;
 
         try {
             conn = await pool.connect();
-            const sql = "UPDATE account SET is_active = $1 WHERE acc_employee_id = $2";
-            await conn.query(sql, [isActive, empId]);
+            const sql = "UPDATE account SET acc_is_active = $1 WHERE acc_employee_id = $2";
+            await conn.query(sql, [accIsActive, empId]);
 
             result = {
                 isError: false,
@@ -259,7 +259,7 @@ module.exports = {
             const empSql = `UPDATE employee SET deleted_at = NULL WHERE emp_id = $1`;
             await conn.query(empSql, [emp_id]);
 
-            const accountSql = `UPDATE account SET is_active = TRUE WHERE acc_employee_id = $1`;
+            const accountSql = `UPDATE account SET acc_is_active = TRUE WHERE acc_employee_id = $1`;
             await conn.query(accountSql, [emp_id]);
 
             await conn.query('COMMIT');

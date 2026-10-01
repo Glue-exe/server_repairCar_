@@ -368,8 +368,8 @@ app.put("/api/employee", checkAccessToken, async (req, res) => {
 });
 
 app.put("/api/employee/status", checkAccessToken, async (req, res) => {
-  const { emp_id, is_active } = req.body;
-  const response = await empModel.updateEmployeeStatus(emp_id, is_active);
+  const { emp_id, acc_is_active } = req.body;
+  const response = await empModel.updateEmployeeStatus(emp_id, acc_is_active);
   res.json(response);
 });
 
@@ -385,7 +385,7 @@ app.put("/api/employee/restore", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.get("/api/getPart", async (req, res) => {
+app.get("/api/getPart", checkAccessToken, async (req, res) => {
   const response = await partModel.getPart();
   res.json(response);
 });
@@ -402,17 +402,38 @@ app.post("/api/postPart", checkAccessToken, upload.single("file"), async (req, r
 });
 
 app.put("/api/putPart", checkAccessToken, upload.single("file"), async (req, res) => {
+  let partUrl = undefined;
+  if (req.file) {
+    partUrl = req.file.filename;
+  } else if (req.body.part_url !== undefined) {
+    const rawUrl = req.body.part_url ? req.body.part_url.toString().trim() : "";
+    partUrl = rawUrl === "" || rawUrl === "null" ? null : rawUrl;
+  }
+
   const partData = {
     ...req.body,
-    part_url: req.file ? req.file.filename : (req.body.part_url || null),
+    part_url: partUrl,
   };
   const response = await partModel.editPart(partData);
   res.json(response);
 });
 
-app.delete("/api/deletePart",  async (req, res) => {
-  const partId = req.body.part_id;
+app.delete("/api/deletePart", checkAccessToken, async (req, res) => {
+  const partId = req.body?.part_id || req.query?.part_id;
+  if (!partId) {
+    return res.json({
+      isError: true,
+      data: "",
+      errorMessage: "กรุณาระบุ part_id",
+    });
+  }
   const response = await partModel.deletePart(partId);
+  res.json(response);
+});
+
+app.put("/api/part/status", checkAccessToken, async (req, res) => {
+  const { part_id, part_is_active } = req.body;
+  const response = await partModel.updatePartStatus(part_id, part_is_active);
   res.json(response);
 });
 
