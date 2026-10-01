@@ -12,15 +12,43 @@ module.exports = {
             var sql = `
                 SELECT DISTINCT
                     p.part_id,
+                    p.part_code,
                     p.part_name,
                     p.part_price,
-                    p.part_brand
+                    p.unit,
+                    p.part_is_active,
+                    p.part_url,
+                    p.part_brand_id,
+                    p.part_category_id,
+                    pb.pb_name,
+                    pc.pc_name
                 FROM part p
-                INNER JOIN vehicle_part_compatibility vpc ON p.part_id = vpc.vpc_part_id
-                INNER JOIN vehicle v ON vpc.vpc_vehicle_model_id = v.v_vehicle_model_id
-                INNER JOIN orders o ON o.o_vehicle_id = v.v_id
-                INNER JOIN sub_task st ON st.st_order_id = o.o_id
-                WHERE st.st_id = $1
+                LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
+                LEFT JOIN part_category pc ON p.part_category_id = pc.pc_id
+                CROSS JOIN (
+                    SELECT v.v_vehicle_model_id, v.v_year
+                    FROM sub_task st
+                    JOIN orders o ON st.st_order_id = o.o_id
+                    JOIN vehicle v ON o.o_vehicle_id = v.v_id
+                    WHERE st.st_id = $1
+                ) veh
+                WHERE p.part_is_active = TRUE
+                  AND (
+                      -- 1. Universal Part: ไม่มีการระบุรุ่นรถใน vehicle_part_compatibility (เบิกได้กับรถทุกคัน)
+                      NOT EXISTS (
+                          SELECT 1 FROM vehicle_part_compatibility vpc_u 
+                          WHERE vpc_u.vpc_part_id = p.part_id
+                      )
+                      OR
+                      -- 2. Model-Specific Part: ระบุรุ่นรถตรงกับรถคันใน Order (และช่วงปีตรงกัน)
+                      EXISTS (
+                          SELECT 1 FROM vehicle_part_compatibility vpc_m
+                          WHERE vpc_m.vpc_part_id = p.part_id
+                            AND vpc_m.vpc_vehicle_model_id = veh.v_vehicle_model_id
+                            AND (vpc_m.vpc_year_from IS NULL OR veh.v_year IS NULL OR veh.v_year >= vpc_m.vpc_year_from)
+                            AND (vpc_m.vpc_year_to IS NULL OR veh.v_year IS NULL OR veh.v_year <= vpc_m.vpc_year_to)
+                      )
+                  )
                 ORDER BY p.part_id ASC;
             `;
 
