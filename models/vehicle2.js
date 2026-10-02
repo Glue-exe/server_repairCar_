@@ -23,7 +23,7 @@ module.exports = {
                 INNER JOIN vehicle_model AS vehModel ON veh.v_vehicle_model_id = vehModel.vm_id
                 INNER JOIN vehicle_brand AS vehBrand ON vehModel.vm_brand_id = vehBrand.vb_id
 
-                WHERE veh.v_license_plate = $1;
+                WHERE REPLACE(veh.v_license_plate, ' ', '') ILIKE REPLACE($1, ' ', '');
             `;
 
             const rows = await conn.query(searchLicenseplateSQL, [data]);
