@@ -38,12 +38,20 @@ module.exports = {
         }
     },
 
-    addSubTask: async (data) => {
+    addSubTask: async (data, accountId) => {
         let conn;
         let result;
 
         const orderId = data.st_order_id;
-        const accId = data.accId;
+        const accId = accountId;
+
+        if (!accId) {
+            return {
+                isError: true,
+                data: [],
+                errorMessage: 'ไม่พบข้อมูลผู้ใช้งาน',
+            };
+        }
 
         try {
             conn = await pool.connect();

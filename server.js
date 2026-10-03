@@ -254,7 +254,8 @@ app.get("/api/sub_task_status", checkAccessToken, async (req, res) => {
 });
 
 app.post("/api/sub_task", checkAccessToken, async (req, res) => {
-  const response = await subTaskModel.addSubTask(req.body);
+  const accountId = req.user.user_id;
+  const response = await subTaskModel.addSubTask(req.body, accountId);
   res.json(response);
 });
 
