@@ -431,7 +431,7 @@ module.exports = {
                         const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
                         fs.writeFileSync(filePath, Buffer.from(cleanBase64, 'base64'));
 
-                        const imageUrl = `/uploads/${fileName}`;
+                        const imageUrl = fileName;
 
                         var imageSql = `
                             INSERT INTO order_image (
