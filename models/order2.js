@@ -574,17 +574,42 @@ module.exports = {
         let conn;
         let result;
 
+        if (!accountId) {
+            return {
+                isError: true,
+                data: "",
+                errorMessage: "ไม่พบข้อมูลผู้ใช้งานจาก Token"
+            };
+        }
+
         try {
             conn = await pool.connect();
+
+            // ตรวจสอบ accountId มีอยู่ใน order_technician ของ Order หรือไม่
+            const checkSql = `
+                SELECT ot_id 
+                FROM order_technician 
+                WHERE ot_order_id = $1 AND ot_account_id = $2;
+            `;
+            const checkRes = await conn.query(checkSql, [orderId, accountId]);
+
+            if (checkRes.rows.length === 0) {
+                result = {
+                    isError: true,
+                    data: "",
+                    errorMessage: "คุณยังไม่ได้กดรับงานนี้ จึงไม่สามารถเปลี่ยนสถานะได้"
+                };
+                return result;
+            }
 
             var sql = "UPDATE orders SET o_order_status_id = $1, o_updated_at = CURRENT_TIMESTAMP WHERE o_id = $2 RETURNING o_id, o_order_status_id";
             await conn.query(sql, [statusId, orderId]);
 
             var logSql = `
-                INSERT INTO repair_log (rl_order_id, rl_updated_by_account_id, rl_created_at)
-                VALUES ($1, $2, CURRENT_TIMESTAMP);
+                INSERT INTO repair_log (rl_order_id, rl_order_status_id, rl_updated_by_account_id, rl_created_at)
+                VALUES ($1, $2, $3, CURRENT_TIMESTAMP);
             `;
-            await conn.query(logSql, [orderId, accountId]);
+            await conn.query(logSql, [orderId, statusId, accountId]);
 
             result = {
                 isError: false,
