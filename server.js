@@ -22,7 +22,6 @@ const partModel = require("./models/part.js");
 const vehicleModel = require("./models/vehicle.js"); // [vehicle] ยี่ห้อ/รุ่นรถ (ข้อมูลหลัก)
 
 const vehicleSearchModel = require("./models/vehicle_search.js");
-const order2Model = require("./models/order2.js");
 const order3Model = require("./models/order3.js"); // [order3] โมเดลศูนย์รวมงานซ่อม (Order Center)
 const serviceModel = require("./models/service.js");
 const subTaskModel = require("./models/sub_task.js");
@@ -45,13 +44,8 @@ app.use(cors());
 // uploads
 app.use("/images", express.static("uploads"));
 
-// ขนาดไฟล์รูปสูงสุดที่รับได้ (5 MB)
-const IMAGE_MAX_SIZE = 5 * 1024 * 1024;
-
-// ชนิดไฟล์รูปที่รับได้
-const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
-
 // สร้าง multer สำหรับ entity หนึ่งๆ — ตั้งชื่อไฟล์ตาม convention ของ entity นั้น
+// ไม่จำกัดขนาดไฟล์และชนิดไฟล์ (เพดานจริงคือ body parser 50 MB)
 const makeUpload = (entity) => {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -64,14 +58,6 @@ const makeUpload = (entity) => {
 
   return multer({
     storage: storage,
-    limits: { fileSize: IMAGE_MAX_SIZE },
-    fileFilter: function (req, file, cb) {
-      if (IMAGE_MIME_TYPES.includes(file.mimetype)) {
-        cb(null, true);
-        return;
-      }
-      cb(new Error("รองรับเฉพาะไฟล์รูปภาพ jpeg / png / webp"));
-    },
   });
 };
 
@@ -80,19 +66,15 @@ const uploadPart = makeUpload("part");
 const uploadInvoice = makeUpload("invoice");
 const uploadService = makeUpload("service");
 
-// ห่อ multer ให้คืน envelope แทนการโยน error ออกไป (ไฟล์ใหญ่เกิน / ชนิดไฟล์ไม่รับ)
+// ห่อ multer ให้คืน envelope แทนการโยน error ออกไป
 const runImageUpload = (uploadMiddleware) => {
   return (req, res, next) => {
     uploadMiddleware(req, res, (error) => {
       if (error) {
-        const errorMessage =
-          error.code === "LIMIT_FILE_SIZE"
-            ? "ไฟล์รูปใหญ่เกิน 5 MB"
-            : error.message;
         res.json({
           isError: true,
           data: null,
-          errorMessage: errorMessage,
+          errorMessage: error.message,
         });
         return;
       }
@@ -423,11 +405,6 @@ app.get("/api/order_status", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.get("/api/all_orders", checkAccessToken, async (req, res) => {
-  const response = await order2Model.getAllOrders(req.query);
-  res.json(response);
-});
-
 // order Endpoint (latest)
 app.get("/api/order3", checkAccessToken, async (req, res) => {
   const accId = req.user.user_id;
@@ -531,45 +508,6 @@ app.post("/api/order3/cancel_order", checkAccessToken, async (req, res) => {
   const { order_id } = req.body;
   const accountId = req.user.user_id;
   const response = await order3Model.cancelAcceptOrder(order_id, accountId);
-  res.json(response);
-});
-
-app.get("/api/order_by_id", checkAccessToken, async (req, res) => {
-  const orderId = req.query.order_id;
-  const userId = req.query.user_id;
-  const response = await order2Model.getOrderById(orderId, userId);
-  res.json(response);
-});
-
-app.get("/api/order/technicians", checkAccessToken, async (req, res) => {
-  const orderId = req.query.order_id;
-  const response = await order2Model.getOrderTechnicians(orderId);
-  res.json(response);
-});
-
-app.post("/api/order/accept", checkAccessToken, async (req, res) => {
-  const orderId = req.body.order_id;
-  const accountId = req.user.user_id;
-  const response = await order2Model.acceptOrder(orderId, accountId);
-  res.json(response);
-});
-
-app.post("/api/order/cancel_technician", checkAccessToken, async (req, res) => {
-  const orderId = req.body.order_id;
-  const accountId = req.user.user_id;
-  const response = await order2Model.cancelOrderTechnician(orderId, accountId);
-  res.json(response);
-});
-
-app.post("/api/order/update_status", checkAccessToken, async (req, res) => {
-  const orderId = req.body.order_id;
-  const statusId = req.body.status_id;
-  const accountId = req.user.user_id;
-  const response = await order2Model.updateOrderStatus(
-    orderId,
-    statusId,
-    accountId,
-  );
   res.json(response);
 });
 
@@ -751,9 +689,9 @@ app.post("/api/add_vehicle_by_cus", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.post("/api/vehicle_orders", checkAccessToken, async (req, res) => {
-  const vehicleId = req.body.vehicle_id;
-  const response = await order2Model.getOrdersByVehicleId(vehicleId);
+app.get("/api/order3/vehicle_order_history/:vehicleId", checkAccessToken, async (req, res) => {
+  const vehicleId = req.params.vehicleId;
+  const response = await order3Model.getOrderHistoryByVehicleId(vehicleId);
   res.json(response);
 });
 

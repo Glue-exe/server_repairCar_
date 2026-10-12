@@ -738,5 +738,51 @@ module.exports = {
         }
 
         return result;
+    },
+
+    getOrderHistoryByVehicleId: async (vehicleId) => {
+        let conn;
+
+        if (!vehicleId) {
+            return {
+                isError: true,
+                data: [],
+                errorMessage: "ไม่พบรถยนต์ที่ระบุ"
+            };
+        }
+
+        try {
+            conn = await pool.connect();
+
+            const sql = `
+                SELECT
+                    o.o_id,
+                    o.o_symptom,
+                    os.os_name,
+                    o.o_created_at
+                FROM orders o
+                INNER JOIN order_status os ON o.o_order_status_id = os.os_id
+                WHERE o.o_vehicle_id = $1
+                ORDER BY o.o_created_at DESC;
+            `;
+
+            const rows = await conn.query(sql, [vehicleId]);
+
+            return {
+                isError: false,
+                data: rows.rows,
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            return {
+                isError: true,
+                data: [],
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
     }
 };
