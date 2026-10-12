@@ -8,26 +8,31 @@ const fs = require("fs");
 const userAccountModel = require("./models/user_account");
 const jwt = require("./libs/jwt");
 const dateUtils = require("./libs/date_utils.js");
+const { buildImageName } = require("./libs/image_name.js");
 const dashboardModel = require("./models/dashboard.js");
 const incomeModel = require("./models/income.js");
 const empModel = require("./models/employee.js");
-const vehiclessearch = require("./models/vehicle_search.js");
+// [LEGACY] ย้ายไป models/old/vehicle_search.js แล้ว — ไม่ถูกโหลด (ปิด route /api/vehicle ด้านล่าง)
+// const vehiclessearch = require("./models/old/vehicle_search.js");
 const addnewcustomer = require("./models/customer.js");
 const orderModel = require("./models/order.js");
 const titleModel = require("./models/title.js");
 const userRoleModel = require("./models/user_role.js");
 const partModel = require("./models/part.js");
-const vehicleModel = require("./models/vehicle.js");
+const vehicleModel = require("./models/vehicle.js"); // [vehicle] ยี่ห้อ/รุ่นรถ (ข้อมูลหลัก)
 
-const vehicle2Model = require("./models/vehicle2.js");
+const vehicleSearchModel = require("./models/vehicle_search.js");
 const order2Model = require("./models/order2.js");
+const order3Model = require("./models/order3.js"); // [order3] โมเดลศูนย์รวมงานซ่อม (Order Center)
 const serviceModel = require("./models/service.js");
 const subTaskModel = require("./models/sub_task.js");
+const vehicleRepairCategoryModel = require("./models/vehicle_repair_category.js");
 const partRequisitionModel = require("./models/part_requisition.js");
-const approvalPartModel = require("./models/approval_part.js");
-const invoiceModel = require("./models/invoice.js");
+const invoice2Model = require("./models/invoice2.js"); // [invoice2] บิลแบบ live (หัวบิลใช้ตาราง invoice)
 const paymentMethodModel = require("./models/payment_method.js");
 const paymentStatusModel = require("./models/payment_status.js");
+const priorityModel = require("./models/priority.js");
+const orderStatusModel = require("./models/order_status.js");
 const salaryHistoryModel = require("./models/salary_history.js");
 
 const app = express();
@@ -40,18 +45,61 @@ app.use(cors());
 // uploads
 app.use("/images", express.static("uploads"));
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, "images-" + uniqueSuffix + ext);
-  }
-});
+// ขนาดไฟล์รูปสูงสุดที่รับได้ (5 MB)
+const IMAGE_MAX_SIZE = 5 * 1024 * 1024;
 
-const upload = multer({ storage: storage });
+// ชนิดไฟล์รูปที่รับได้
+const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+// สร้าง multer สำหรับ entity หนึ่งๆ — ตั้งชื่อไฟล์ตาม convention ของ entity นั้น
+const makeUpload = (entity) => {
+  const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, "uploads/");
+    },
+    filename: function (req, file, cb) {
+      cb(null, buildImageName(entity, file.originalname));
+    },
+  });
+
+  return multer({
+    storage: storage,
+    limits: { fileSize: IMAGE_MAX_SIZE },
+    fileFilter: function (req, file, cb) {
+      if (IMAGE_MIME_TYPES.includes(file.mimetype)) {
+        cb(null, true);
+        return;
+      }
+      cb(new Error("รองรับเฉพาะไฟล์รูปภาพ jpeg / png / webp"));
+    },
+  });
+};
+
+const uploadOrder = makeUpload("order");
+const uploadPart = makeUpload("part");
+const uploadInvoice = makeUpload("invoice");
+const uploadService = makeUpload("service");
+
+// ห่อ multer ให้คืน envelope แทนการโยน error ออกไป (ไฟล์ใหญ่เกิน / ชนิดไฟล์ไม่รับ)
+const runImageUpload = (uploadMiddleware) => {
+  return (req, res, next) => {
+    uploadMiddleware(req, res, (error) => {
+      if (error) {
+        const errorMessage =
+          error.code === "LIMIT_FILE_SIZE"
+            ? "ไฟล์รูปใหญ่เกิน 5 MB"
+            : error.message;
+        res.json({
+          isError: true,
+          data: null,
+          errorMessage: errorMessage,
+        });
+        return;
+      }
+      next();
+    });
+  };
+};
 
 app.get("/api/users", (req, res) => {
   var response = {
@@ -214,13 +262,14 @@ app.get("/api/get_employee", async (req, res) => {
   res.json(response);
 });
 
-app.get("/api/vehicle", checkAccessToken, async (req, res) => {
-  const searchVehicalOrCustomer = req.query.searchVehicalOrCustomer;
-  const response = await vehiclessearch.searchVehicalOrCustomer(
-    searchVehicalOrCustomer,
-  );
-  res.json(response);
-});
+// [LEGACY] ปิด route /api/vehicle — หน้าจอที่เรียกถูกย้ายไป lib/screens/owner/intakecar(old)/ แล้ว
+// app.get("/api/vehicle", checkAccessToken, async (req, res) => {
+//   const searchVehicalOrCustomer = req.query.searchVehicalOrCustomer;
+//   const response = await vehiclessearch.searchVehicalOrCustomer(
+//     searchVehicalOrCustomer,
+//   );
+//   res.json(response);
+// });
 
 app.post("/api/addnewcustomer", checkAccessToken, async (req, res) => {
   await addnewcustomer.createVehicalIntake(req, res);
@@ -248,6 +297,69 @@ app.get("/api/service", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
+app.post("/api/service", checkAccessToken, runImageUpload(uploadService.single("file")), async (req, res) => {
+  const serviceData = {
+    ...req.body,
+    s_service_url: req.file ? req.file.filename : (req.body.s_service_url || null),
+  };
+  const response = await serviceModel.addService(serviceData);
+
+  if (response.isError && req.file) {
+    // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+    fs.unlink(path.join("uploads", req.file.filename), () => {});
+  }
+
+  res.json(response);
+});
+
+app.put("/api/service", checkAccessToken, runImageUpload(uploadService.single("file")), async (req, res) => {
+  let serviceUrl = undefined;
+  if (req.file) {
+    serviceUrl = req.file.filename;
+  } else if (req.body.s_service_url !== undefined) {
+    const rawUrl = req.body.s_service_url ? req.body.s_service_url.toString().trim() : "";
+    serviceUrl = rawUrl === "" || rawUrl === "null" ? null : rawUrl;
+  }
+
+  const serviceData = {
+    ...req.body,
+    s_service_url: serviceUrl,
+  };
+  const response = await serviceModel.editService(serviceData);
+
+  if (response.isError) {
+    if (req.file) {
+      // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+      fs.unlink(path.join("uploads", req.file.filename), () => {});
+    }
+  } else if (
+    // โมเดลคืน old_service_url เฉพาะเมื่อเปลี่ยนรูปจริง จึงลบได้อย่างปลอดภัย
+    response.data &&
+    response.data.old_service_url &&
+    response.data.old_service_url !== serviceUrl
+  ) {
+    // แทนที่/ลบรูปเดิม → ลบไฟล์เก่าทิ้ง
+    fs.unlink(path.join("uploads", response.data.old_service_url), () => {});
+  }
+
+  res.json(response);
+});
+
+app.put("/api/service/status", checkAccessToken, async (req, res) => {
+  const { service_id, s_service_active } = req.body;
+  const response = await serviceModel.updateServiceStatus(
+    service_id,
+    s_service_active
+  );
+  res.json(response);
+});
+
+// รายการหมวดหมู่งานซ่อมตามส่วนของรถ
+app.get("/api/repair_categories", checkAccessToken, async (req, res) => {
+  const response = await vehicleRepairCategoryModel.getRepairCategories();
+  res.json(response);
+});
+
 app.get("/api/sub_task_status", checkAccessToken, async (req, res) => {
   const response = await subTaskModel.getSubTaskStatuses();
   res.json(response);
@@ -261,7 +373,8 @@ app.post("/api/sub_task", checkAccessToken, async (req, res) => {
 
 app.get("/api/sub_tasks", checkAccessToken, async (req, res) => {
   const orderId = req.query.order_id;
-  const response = await subTaskModel.getSubTasksByOrderId(orderId);
+  const accountId = req.user.user_id;
+  const response = await subTaskModel.getSubTasksByOrderId(orderId, accountId);
   res.json(response);
 });
 
@@ -291,25 +404,133 @@ app.post("/api/sub_task/cancel", checkAccessToken, async (req, res) => {
 
 app.post("/api/sub_task/update_status", checkAccessToken, async (req, res) => {
   const { sub_task_id, status_id } = req.body;
+  const accountId = req.user.user_id;
   const response = await subTaskModel.updateSubTaskStatus(
     sub_task_id,
     status_id,
+    accountId,
   );
   res.json(response);
 });
 
 app.get("/api/priority", checkAccessToken, async (req, res) => {
-  const response = await order2Model.getPriorities();
+  const response = await priorityModel.getPriority();
   res.json(response);
 });
 
 app.get("/api/order_status", checkAccessToken, async (req, res) => {
-  const response = await order2Model.getOrderStatuses();
+  const response = await orderStatusModel.getOrderStatus();
   res.json(response);
 });
 
 app.get("/api/all_orders", checkAccessToken, async (req, res) => {
   const response = await order2Model.getAllOrders(req.query);
+  res.json(response);
+});
+
+// order Endpoint (latest)
+app.get("/api/order3", checkAccessToken, async (req, res) => {
+  const accId = req.user.user_id;
+  const response = await order3Model.getOrder(accId);
+  res.json(response);
+});
+
+// สร้างใบสั่งซ่อมใหม่ (multipart: fields + รูป 1 รูป — ไฟล์เป็น optional)
+app.post("/api/order3/create", checkAccessToken, runImageUpload(uploadOrder.single("file")), async (req, res) => {
+  const imageName = req.file ? req.file.filename : null;
+  const accountId = req.user.user_id;
+  const response = await order3Model.createOrder(req.body, imageName, accountId);
+
+  if (response.isError && req.file) {
+    // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+    fs.unlink(path.join("uploads", req.file.filename), () => {});
+  }
+
+  res.json(response);
+});
+
+// ดึงใบสั่งซ่อมเดียว (ใช้เปิดหน้ารายละเอียดจากประวัติการซ่อมของรถ)
+app.get("/api/order3/:orderId", checkAccessToken, async (req, res) => {
+  const accId = req.user.user_id;
+  const orderId = req.params.orderId ? Number(req.params.orderId) : null;
+  const response = await order3Model.getOrderById(accId, orderId);
+  res.json(response);
+});
+
+app.post("/api/order3/update_priority", checkAccessToken, async (req, res) => {
+  const { order_id, priority_id } = req.body;
+  const accountId = req.user.user_id;
+  const response = await order3Model.updatePriorityOrder(order_id, priority_id, accountId);
+  res.json(response);
+});
+
+app.post("/api/order3/update_status", checkAccessToken, async (req, res) => {
+  const { order_id, status_id } = req.body;
+  const accountId = req.user.user_id;
+  const response = await order3Model.updateStatusOrder(order_id, status_id, accountId);
+  res.json(response);
+});
+
+app.post("/api/order3/update_symptom", checkAccessToken, async (req, res) => {
+  const { order_id, symptom } = req.body;
+  const accountId = req.user.user_id;
+  const response = await order3Model.updateSymptomOrder(order_id, symptom, accountId);
+  res.json(response);
+});
+
+app.get("/api/order3/images/:orderId", checkAccessToken, async (req, res) => {
+  const { orderId } = req.params;
+  const response = await order3Model.getImages(orderId);
+  res.json(response);
+});
+
+app.post("/api/order3/upload_image", checkAccessToken, runImageUpload(uploadOrder.single("file")), async (req, res) => {
+  if (!req.file) {
+    return res.json({ isError: true, data: null, errorMessage: "กรุณาแนบไฟล์รูปภาพ" });
+  }
+  const orderId = req.body.order_id;
+  const imageUrl = req.file.filename;
+  const accountId = req.user.user_id;
+  const response = await order3Model.addImage(orderId, imageUrl, accountId);
+
+  if (response.isError) {
+    // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+    fs.unlink(path.join("uploads", req.file.filename), () => {});
+  }
+
+  res.json(response);
+});
+
+app.delete("/api/order3/image/:imageId", checkAccessToken, async (req, res) => {
+  const { imageId } = req.params;
+  const accountId = req.user.user_id;
+  const response = await order3Model.deleteImage(imageId, accountId);
+
+  // ลบไฟล์บนดิสก์ตามชื่อไฟล์ที่ได้คืนกลับมา
+  if (!response.isError && response.data && response.data.image_url) {
+    fs.unlink(path.join("uploads", response.data.image_url), () => {});
+  }
+
+  res.json(response);
+});
+
+app.get("/api/order3/order_technicians/:orderId", checkAccessToken, async (req, res) => {
+  const { orderId } = req.params;
+  const response = await order3Model.getOrderTechnician(orderId);
+  res.json(response);
+});
+
+app.post("/api/order3/accept_order", checkAccessToken, async (req, res) => {
+  const { order_id } = req.body;
+  const accountId = req.user.user_id;
+  const response = await order3Model.acceptOrder(order_id, accountId);
+  res.json(response);
+});
+
+app.post("/api/order3/cancel_order", checkAccessToken, async (req, res) => {
+  const { order_id } = req.body;
+  const accountId = req.user.user_id;
+  const response = await order3Model.cancelAcceptOrder(order_id, accountId);
   res.json(response);
 });
 
@@ -391,7 +612,7 @@ app.get("/api/getPart", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.post("/api/postPart", checkAccessToken, upload.single("file"), async (req, res) => {
+app.post("/api/postPart", checkAccessToken, runImageUpload(uploadPart.single("file")), async (req, res) => {
   const partData = {
     ...req.body,
     // ถ้ามีไฟล์อัปโหลดจริง ให้ใช้ชื่อไฟล์ที่ multer บันทึก (req.file.filename)
@@ -399,10 +620,16 @@ app.post("/api/postPart", checkAccessToken, upload.single("file"), async (req, r
     part_url: req.file ? req.file.filename : (req.body.part_url || null),
   };
   const response = await partModel.addPart(partData);
+
+  if (response.isError && req.file) {
+    // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+    fs.unlink(path.join("uploads", req.file.filename), () => {});
+  }
+
   res.json(response);
 });
 
-app.put("/api/putPart", checkAccessToken, upload.single("file"), async (req, res) => {
+app.put("/api/putPart", checkAccessToken, runImageUpload(uploadPart.single("file")), async (req, res) => {
   let partUrl = undefined;
   if (req.file) {
     partUrl = req.file.filename;
@@ -416,6 +643,22 @@ app.put("/api/putPart", checkAccessToken, upload.single("file"), async (req, res
     part_url: partUrl,
   };
   const response = await partModel.editPart(partData);
+
+  if (response.isError) {
+    if (req.file) {
+      // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+      fs.unlink(path.join("uploads", req.file.filename), () => {});
+    }
+  } else if (
+    // โมเดลคืน old_part_url เฉพาะเมื่อเปลี่ยนรูปจริง จึงลบได้อย่างปลอดภัย
+    response.data &&
+    response.data.old_part_url &&
+    response.data.old_part_url !== partUrl
+  ) {
+    // แทนที่/ลบรูปเดิม → ลบไฟล์เก่าทิ้ง
+    fs.unlink(path.join("uploads", response.data.old_part_url), () => {});
+  }
+
   res.json(response);
 });
 
@@ -448,7 +691,7 @@ app.get("/api/brand", checkAccessToken, async (req, res) => {
 });
 
 
-// Vehicle Brand routes
+// Vehicle Brand routes (ข้อมูลหลัก: ยี่ห้อรถ)
 app.get("/api/vehicle_brand", checkAccessToken, async (req, res) => {
   const response = await vehicleModel.getBrands();
   res.json(response);
@@ -462,12 +705,12 @@ app.put("/api/vehicle_brand", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 app.delete("/api/vehicle_brand", checkAccessToken, async (req, res) => {
-  const brandId = req.body.brand_id;
+  const brandId = req.body.vb_id;
   const response = await vehicleModel.deleteBrand(brandId);
   res.json(response);
 });
 
-// Vehicle Model routes
+// Vehicle Model routes (ข้อมูลหลัก: รุ่นรถ)
 app.get("/api/vehicle_model", checkAccessToken, async (req, res) => {
   const response = await vehicleModel.getModels();
   res.json(response);
@@ -481,39 +724,20 @@ app.put("/api/vehicle_model", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 app.delete("/api/vehicle_model", checkAccessToken, async (req, res) => {
-  const modelId = req.body.veh_model_id;
+  const modelId = req.body.vm_id;
   const response = await vehicleModel.deleteModel(modelId);
   res.json(response);
 });
 
-// Vehicle Year routes
-app.get("/api/vehicle_year", checkAccessToken, async (req, res) => {
-  const response = await vehicleModel.getYears();
-  res.json(response);
-});
-app.post("/api/vehicle_year", checkAccessToken, async (req, res) => {
-  const response = await vehicleModel.addYear(req.body);
-  res.json(response);
-});
-app.put("/api/vehicle_year", checkAccessToken, async (req, res) => {
-  const response = await vehicleModel.updateYear(req.body);
-  res.json(response);
-});
-app.delete("/api/vehicle_year", checkAccessToken, async (req, res) => {
-  const yearId = req.body.veh_year_id;
-  const response = await vehicleModel.deleteYear(yearId);
-  res.json(response);
-});
-
-app.post("/api/vehicle_search_licensePlate", checkAccessToken, async (req, res) => {
+app.post("/api/vehicle_search_license_plate", checkAccessToken, async (req, res) => {
   const licenseplate = req.body.v_license_plate;
-  const response = await vehicle2Model.searchLicenseplate(licenseplate);
+  const response = await vehicleSearchModel.searchLicensePlate(licenseplate);
   res.json(response);
 });
 
 app.post("/api/vehicle_search_phone", checkAccessToken, async (req, res) => {
   const phone = req.body.phone;
-  const response = await vehicle2Model.searchPhone(phone);
+  const response = await vehicleSearchModel.searchPhone(phone);
   res.json(response);
 });
 
@@ -533,11 +757,6 @@ app.post("/api/vehicle_orders", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.post("/api/create_order", checkAccessToken, async (req, res) => {
-  const response = await order2Model.createOrder(req.body);
-  res.json(response);
-});
-
 // Part Requisition Endpoints
 app.get("/api/compatible_parts", checkAccessToken, async (req, res) => {
   const subTaskId = req.query.sub_task_id;
@@ -552,40 +771,39 @@ app.get("/api/request_parts", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
+app.get("/api/req_part_status", checkAccessToken, async (req, res) => {
+  const response = await partRequisitionModel.getReqPartStatuses();
+  res.json(response);
+});
+
 app.post("/api/request_part", checkAccessToken, async (req, res) => {
-  const response = await partRequisitionModel.createRequestPart(req.body);
+  const accountId = req.user.user_id;
+  const response = await partRequisitionModel.createRequestPart(
+    req.body,
+    accountId,
+  );
   res.json(response);
 });
 
-app.get("/api/approval_part_status_one", checkAccessToken, async (req, res) => {
-  const response = await approvalPartModel.getApprovalPartStatusOne();
+app.get("/api/approval_request_parts", checkAccessToken, async (req, res) => {
+  const statusId = req.query.status_id;
+  const response = await partRequisitionModel.getRequestPartsForApproval(
+    statusId,
+  );
   res.json(response);
 });
 
-app.get("/api/approval_part_status_two", checkAccessToken, async (req, res) => {
-  const response = await approvalPartModel.getApprovalPartStatusTwo();
-  res.json(response);
-});
-
-app.get("/api/approval_part_status_three", checkAccessToken, async (req, res) => {
-  const response = await approvalPartModel.getApprovalPartStatusThree();
-  res.json(response);
-});
-
-app.post("/api/approval_part", checkAccessToken, async (req, res) => {
-  const response = await approvalPartModel.postApprovalPart(req.body);
-  res.json(response);
-});
-
-app.post("/api/createInvoice", checkAccessToken, async (req, res) => {
-  const response = await invoiceModel.postCreateInvoice(req.body);
-  res.json(response);
-});
-
-app.post("/api/getInvoice", checkAccessToken, async (req, res) => {
-  const response = await invoiceModel.getInvoice(req.body);
-  res.json(response);
-});
+app.post("/api/request_part/update_status", checkAccessToken, async (req, res) => {
+    const { request_part_id, status_id } = req.body;
+    const accountId = req.user.user_id;
+    const response = await partRequisitionModel.updateRequestPartStatus(
+      request_part_id,
+      status_id,
+      accountId,
+    );
+    res.json(response);
+  },
+);
 
 app.get("/api/payment_methods", checkAccessToken, async (req, res) => {
   const response = await paymentMethodModel.getPaymentMethod();
@@ -597,13 +815,86 @@ app.get("/api/payment_statuses", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
-app.post("/api/updateInvoiceMethod", checkAccessToken, async (req, res) => {
-  const response = await invoiceModel.updatePaymentMethod(req.body);
+// ----- บิลแบบ live (invoice2) -----
+app.get("/api/invoice2/:orderId", checkAccessToken, async (req, res) => {
+  const response = await invoice2Model.getInvoiceByOrderId(req.params.orderId);
   res.json(response);
 });
 
-app.post("/api/updateInvoiceStatus", checkAccessToken, async (req, res) => {
-  const response = await invoiceModel.updatePaymentStatus(req.body);
+app.post("/api/invoice2/create", checkAccessToken, async (req, res) => {
+  const orderId = req.body.order_id;
+  const accountId = req.user.user_id;
+  const response = await invoice2Model.createInvoice(orderId, accountId);
+  res.json(response);
+});
+
+app.post(
+  "/api/invoice2/upload_image",
+  checkAccessToken,
+  runImageUpload(uploadInvoice.single("file")),
+  async (req, res) => {
+    if (!req.file) {
+      return res.json({
+        isError: true,
+        data: null,
+        errorMessage: "กรุณาแนบไฟล์รูปภาพ",
+      });
+    }
+    const invoiceId = req.body.invoice_id;
+    const imageUrl = req.file.filename;
+    const response = await invoice2Model.setImage(
+      invoiceId,
+      imageUrl,
+      req.user.user_id
+    );
+    if (response.isError) {
+      // บันทึกไม่สำเร็จ → ลบไฟล์ที่ multer เพิ่งเขียน เพื่อไม่ให้เหลือไฟล์ขยะ
+      fs.unlink(path.join("uploads", req.file.filename), () => {});
+    } else if (response.data && response.data.old_image_url) {
+      // แทนที่รูปเดิม → ลบไฟล์เก่าทิ้ง
+      fs.unlink(path.join("uploads", response.data.old_image_url), () => {});
+    }
+    res.json(response);
+  }
+);
+
+app.post("/api/invoice2/delete_image", checkAccessToken, async (req, res) => {
+  const response = await invoice2Model.clearImage(
+    req.body.invoice_id,
+    req.user.user_id
+  );
+  // ลบไฟล์บนดิสก์ตามชื่อไฟล์ที่ได้คืนกลับมา
+  if (!response.isError && response.data && response.data.image_url) {
+    fs.unlink(path.join("uploads", response.data.image_url), () => {});
+  }
+  res.json(response);
+});
+
+app.post("/api/invoice2/payment_method", checkAccessToken, async (req, res) => {
+  const { invoice_id, payment_method_id } = req.body;
+  const response = await invoice2Model.updatePaymentMethod(
+    invoice_id,
+    payment_method_id,
+    req.user.user_id
+  );
+  res.json(response);
+});
+
+app.post("/api/invoice2/payment_status", checkAccessToken, async (req, res) => {
+  const { invoice_id, payment_status_id } = req.body;
+  const response = await invoice2Model.updatePaymentStatus(
+    invoice_id,
+    payment_status_id,
+    req.user.user_id
+  );
+  res.json(response);
+});
+
+app.post("/api/invoice2/cancel", checkAccessToken, async (req, res) => {
+  const response = await invoice2Model.cancelInvoice(
+    req.body.invoice_id,
+    req.user.user_id
+  );
   res.json(response);
 });
 

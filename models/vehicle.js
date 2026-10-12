@@ -1,163 +1,517 @@
 const pool = require("../libs/db_pool.js");
 
 module.exports = {
-  // Brand CRUD
-  getBrands: async () => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sql = "SELECT vb_id, vb_id AS id, vb_id AS brand_id, vb_name, vb_name AS name, vb_name AS brand_name FROM vehicle_brand ORDER BY vb_name ASC";
-      const { rows } = await conn.query(sql);
-      return { isError: false, data: rows, errorMessage: "" };
-    } catch (error) {
-      return { isError: true, data: [], errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+    getBrands: async () => {
+        let conn;
+        let result;
 
-  addBrand: async (data) => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sql = "INSERT INTO vehicle_brand (vb_name) VALUES ($1) RETURNING vb_id AS brand_id, vb_id AS id, vb_name AS brand_name, vb_name AS name";
-      const { rows } = await conn.query(sql, [data.brand_name || data.vb_name || data.name]);
-      return { isError: false, data: rows[0], errorMessage: "" };
-    } catch (error) {
-      return { isError: true, data: null, errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+        try {
+            conn = await pool.connect();
 
-  updateBrand: async (data) => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const brandId = data.brand_id || data.vb_id || data.id;
-      const brandName = data.brand_name || data.vb_name || data.name;
-      const sql = "UPDATE vehicle_brand SET vb_name = $1 WHERE vb_id = $2";
-      await conn.query(sql, [brandName, brandId]);
-      return { isError: false, message: "อัปเดตยี่ห้อรถยนต์สำเร็จ", errorMessage: "" };
-    } catch (error) {
-      return { isError: true, errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+            const rows = await conn.query(
+                "SELECT vb_id, vb_name FROM vehicle_brand;"
+            );
 
-  deleteBrand: async (brandId) => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sql = "DELETE FROM vehicle_brand WHERE vb_id = $1";
-      await conn.query(sql, [brandId]);
-      return { isError: false, message: "ลบยี่ห้อรถยนต์สำเร็จ", errorMessage: "" };
-    } catch (error) {
-      return { isError: true, errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+            result = {
+                isError: false,
+                data: rows.rows,
+                errorMessage: "",
+            };
+        } catch (error) {
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
 
-  // Model CRUD
-  getModels: async () => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sql = `
-        SELECT 
-          vm.vm_id AS veh_model_id, 
-          vm.vm_id AS id, 
-          vm.vm_name AS model_name, 
-          vm.vm_name AS name, 
-          vb.vb_id AS brand_id, 
-          vb.vb_name AS brand_name
-        FROM vehicle_model vm
-        LEFT JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
-        ORDER BY vb.vb_name ASC, vm.vm_name ASC
-      `;
-      const { rows } = await conn.query(sql);
-      return { isError: false, data: rows, errorMessage: "" };
-    } catch (error) {
-      return { isError: true, data: [], errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+        return result;
+    },
 
-  addModel: async (data) => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sqlModel = "INSERT INTO vehicle_model (vm_name, vm_brand_id) VALUES ($1, $2) RETURNING vm_id AS veh_model_id, vm_id AS id";
-      const modelRes = await conn.query(sqlModel, [
-        data.model_name || data.vm_name || data.name, 
-        data.brand_id || data.vm_brand_id || data.vb_id
-      ]);
-      return { isError: false, data: { veh_model_id: modelRes.rows[0].id, id: modelRes.rows[0].id }, errorMessage: "" };
-    } catch (error) {
-      return { isError: true, data: null, errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+    addBrand: async (data) => {
+        let conn;
+        let result;
 
-  updateModel: async (data) => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const modelId = data.veh_model_id || data.vm_id || data.id;
-      const modelName = data.model_name || data.vm_name || data.name;
-      const brandId = data.brand_id || data.vm_brand_id || data.vb_id;
-      const sql = "UPDATE vehicle_model SET vm_name = $1, vm_brand_id = $2 WHERE vm_id = $3";
-      await conn.query(sql, [modelName, brandId, modelId]);
-      return { isError: false, message: "อัปเดตรุ่นรถยนต์สำเร็จ", errorMessage: "" };
-    } catch (error) {
-      return { isError: true, errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+        const brandName = data.vb_name ? String(data.vb_name).trim() : "";
 
-  deleteModel: async (modelId) => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sql = "DELETE FROM vehicle_model WHERE vm_id = $1";
-      await conn.query(sql, [modelId]);
-      return { isError: false, message: "ลบรุ่นรถยนต์สำเร็จ", errorMessage: "" };
-    } catch (error) {
-      return { isError: true, errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+        if (brandName === "") {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุชื่อยี่ห้อรถยนต์",
+            };
+        }
 
-  // Year CRUD
-  getYears: async () => {
-    let conn;
-    try {
-      conn = await pool.connect();
-      const sql = "SELECT DISTINCT v_year AS veh_year_id, v_year AS year FROM vehicle WHERE v_year IS NOT NULL ORDER BY v_year DESC";
-      const { rows } = await conn.query(sql);
-      return { isError: false, data: rows, errorMessage: "" };
-    } catch (error) {
-      return { isError: true, data: [], errorMessage: error.message };
-    } finally {
-      if (conn) conn.release();
-    }
-  },
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
 
-  addYear: async (data) => {
-    return { isError: false, data: { veh_year_id: data.year, year: data.year }, errorMessage: "" };
-  },
+            const dupRows = await conn.query(
+                "SELECT vb_id FROM vehicle_brand WHERE vb_name = $1;",
+                [brandName]
+            );
 
-  updateYear: async (data) => {
-    return { isError: false, message: "อัปเดตปีรุ่นรถยนต์สำเร็จ", errorMessage: "" };
-  },
+            if (dupRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "มียี่ห้อนี้อยู่แล้ว",
+                };
+            }
 
-  deleteYear: async (yearId) => {
-    return { isError: false, message: "ลบปีรุ่นรถยนต์สำเร็จ", errorMessage: "" };
-  }
+            const rows = await conn.query(
+                "INSERT INTO vehicle_brand (vb_name) VALUES ($1) RETURNING vb_id, vb_name;",
+                [brandName]
+            );
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: rows.rows[0],
+                errorMessage: "",
+            };
+        } catch (error) {
+            if (conn) await conn.query("ROLLBACK");
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
+
+    updateBrand: async (data) => {
+        let conn;
+        let result;
+
+        const brandId = Number(data.vb_id);
+        const brandName = data.vb_name ? String(data.vb_name).trim() : "";
+
+        if (!Number.isInteger(brandId) || brandId <= 0) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "ไม่พบรหัสยี่ห้อรถยนต์ที่ระบุ",
+            };
+        }
+
+        if (brandName === "") {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุชื่อยี่ห้อรถยนต์",
+            };
+        }
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const dupRows = await conn.query(
+                "SELECT vb_id FROM vehicle_brand WHERE vb_name = $1 AND vb_id <> $2;",
+                [brandName, brandId]
+            );
+
+            if (dupRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "มียี่ห้อนี้อยู่แล้ว",
+                };
+            }
+
+            const rows = await conn.query(
+                "UPDATE vehicle_brand SET vb_name = $1 WHERE vb_id = $2 RETURNING vb_id, vb_name;",
+                [brandName, brandId]
+            );
+
+            if (rows.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบยี่ห้อรถยนต์ที่ระบุ",
+                };
+            }
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: rows.rows[0],
+                errorMessage: "",
+            };
+        } catch (error) {
+            if (conn) await conn.query("ROLLBACK");
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
+
+    deleteBrand: async (brandId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const modelRows = await conn.query(
+                "SELECT vm_id FROM vehicle_model WHERE vm_brand_id = $1 LIMIT 1;",
+                [brandId]
+            );
+
+            if (modelRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ลบไม่ได้ เพราะยี่ห้อนี้ถูกใช้อยู่ในข้อมูลรุ่นรถ",
+                };
+            }
+
+            const deleted = await conn.query(
+                "DELETE FROM vehicle_brand WHERE vb_id = $1 RETURNING vb_id;",
+                [brandId]
+            );
+
+            if (deleted.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบยี่ห้อรถยนต์ที่ระบุ",
+                };
+            }
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: deleted.rows[0].vb_id,
+                errorMessage: "",
+            };
+        } catch (error) {
+            if (conn) await conn.query("ROLLBACK");
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
+
+    getModels: async () => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+
+            const rows = await conn.query(
+                `
+                    SELECT
+                        vm.vm_id,
+                        vm.vm_name,
+                        vm.vm_brand_id,
+                        vb.vb_name
+                    FROM vehicle_model vm
+                    INNER JOIN vehicle_brand vb ON vb.vb_id = vm.vm_brand_id
+                    ORDER BY vb.vb_name ASC, vm.vm_name ASC;
+                `
+            );
+
+            result = {
+                isError: false,
+                data: rows.rows,
+                errorMessage: "",
+            };
+        } catch (error) {
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
+
+    addModel: async (data) => {
+        let conn;
+        let result;
+
+        const brandId = Number(data.vm_brand_id);
+        const modelName = data.vm_name ? String(data.vm_name).trim() : "";
+
+        if (!Number.isInteger(brandId) || brandId <= 0) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุยี่ห้อรถยนต์",
+            };
+        }
+
+        if (modelName === "") {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุชื่อรุ่นรถยนต์",
+            };
+        }
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const brandRows = await conn.query(
+                "SELECT vb_id FROM vehicle_brand WHERE vb_id = $1;",
+                [brandId]
+            );
+
+            if (brandRows.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบยี่ห้อรถยนต์ที่ระบุ",
+                };
+            }
+
+            const dupRows = await conn.query(
+                "SELECT vm_id FROM vehicle_model WHERE vm_brand_id = $1 AND vm_name = $2;",
+                [brandId, modelName]
+            );
+
+            if (dupRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "มียี่ห้อและชื่อรุ่นนี้อยู่แล้ว",
+                };
+            }
+
+            const rows = await conn.query(
+                "INSERT INTO vehicle_model (vm_brand_id, vm_name) VALUES ($1, $2) RETURNING vm_id, vm_brand_id, vm_name;",
+                [brandId, modelName]
+            );
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: rows.rows[0],
+                errorMessage: "",
+            };
+        } catch (error) {
+            if (conn) await conn.query("ROLLBACK");
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
+
+    updateModel: async (data) => {
+        let conn;
+        let result;
+
+        const modelId = Number(data.vm_id);
+        const brandId = Number(data.vm_brand_id);
+        const modelName = data.vm_name ? String(data.vm_name).trim() : "";
+
+        if (!Number.isInteger(modelId) || modelId <= 0) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "ไม่พบรหัสรุ่นรถยนต์ที่ระบุ",
+            };
+        }
+
+        if (!Number.isInteger(brandId) || brandId <= 0) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุยี่ห้อรถยนต์",
+            };
+        }
+
+        if (modelName === "") {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "กรุณาระบุชื่อรุ่นรถยนต์",
+            };
+        }
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const brandRows = await conn.query(
+                "SELECT vb_id FROM vehicle_brand WHERE vb_id = $1;",
+                [brandId]
+            );
+
+            if (brandRows.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบยี่ห้อรถยนต์ที่ระบุ",
+                };
+            }
+
+            const dupRows = await conn.query(
+                "SELECT vm_id FROM vehicle_model WHERE vm_brand_id = $1 AND vm_name = $2 AND vm_id <> $3;",
+                [brandId, modelName, modelId]
+            );
+
+            if (dupRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "มียี่ห้อและชื่อรุ่นนี้อยู่แล้ว",
+                };
+            }
+
+            const rows = await conn.query(
+                `
+                    UPDATE vehicle_model
+                    SET vm_name = $1, vm_brand_id = $2
+                    WHERE vm_id = $3
+                    RETURNING vm_id, vm_brand_id, vm_name;
+                `,
+                [modelName, brandId, modelId]
+            );
+
+            if (rows.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบรุ่นรถยนต์ที่ระบุ",
+                };
+            }
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: rows.rows[0],
+                errorMessage: "",
+            };
+        } catch (error) {
+            if (conn) await conn.query("ROLLBACK");
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
+
+    deleteModel: async (modelId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const vehicleRows = await conn.query(
+                "SELECT v_id FROM vehicle WHERE v_vehicle_model_id = $1 LIMIT 1;",
+                [modelId]
+            );
+
+            if (vehicleRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ลบไม่ได้ เพราะรุ่นนี้ถูกใช้อยู่ในข้อมูลรถของลูกค้า",
+                };
+            }
+
+            const compatRows = await conn.query(
+                "SELECT vpc_id FROM vehicle_part_compatibility WHERE vpc_vehicle_model_id = $1 LIMIT 1;",
+                [modelId]
+            );
+
+            if (compatRows.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ลบไม่ได้ เพราะรุ่นนี้ยังมีข้อมูลความเข้ากันได้กับอะไหล่",
+                };
+            }
+
+            const deleted = await conn.query(
+                "DELETE FROM vehicle_model WHERE vm_id = $1 RETURNING vm_id;",
+                [modelId]
+            );
+
+            if (deleted.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบรุ่นรถยนต์ที่ระบุ",
+                };
+            }
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: deleted.rows[0].vm_id,
+                errorMessage: "",
+            };
+        } catch (error) {
+            if (conn) await conn.query("ROLLBACK");
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) conn.release();
+        }
+
+        return result;
+    },
 };

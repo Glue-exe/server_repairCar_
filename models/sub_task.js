@@ -1,4 +1,4 @@
-const pool = require('../libs/db_pool');
+const pool = require("../libs/db_pool.js");
 
 module.exports = {
     getSubTaskStatuses: async () => {
@@ -8,15 +8,14 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            var sql = `
+            const sql = `
                 SELECT 
                     sts_id AS id,
                     sts_name AS name
                 FROM sub_task_status
                 ORDER BY sts_id ASC;
             `;
-
-            var rows = await conn.query(sql);
+            const rows = await conn.query(sql);
 
             result = {
                 isError: false,
@@ -33,9 +32,9 @@ module.exports = {
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
     },
 
     addSubTask: async (data, accountId) => {
@@ -43,56 +42,66 @@ module.exports = {
         let result;
 
         const orderId = data.st_order_id;
-        const accId = accountId;
 
-        if (!accId) {
+        if (!accountId) {
             return {
                 isError: true,
-                data: [],
-                errorMessage: 'ไม่พบข้อมูลผู้ใช้งาน',
+                data: null,
+                errorMessage: "ไม่พบข้อมูลผู้ใช้งาน"
             };
         }
 
         try {
             conn = await pool.connect();
+            await conn.query("BEGIN");
 
-            // check order_technician
-
-            var checkSql = `
-            SELECT ot_account_id
-            FROM order_technician
-            WHERE ot_order_id = $1 AND ot_account_id = $2;
+            const checkSql = `
+                SELECT ot_id
+                FROM order_technician
+                WHERE ot_order_id = $1 AND ot_account_id = $2;
             `;
+            const member = await conn.query(checkSql, [orderId, accountId]);
 
-           const checkRes = await conn.query(checkSql, [orderId, accId]);
-
-            if(checkRes.rows.length === 0) {
-                result = {
+            if (member.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
                     isError: true,
-                    data: [],
-                    errorMessage: 'คุณยังไม่ได้กดรับงานนี้',
-                }
-                return;
+                    data: null,
+                    errorMessage: "คุณยังไม่ได้กดรับงานนี้"
+                };
             }
-            
-            var sql = `
+
+            const hasService = data.st_service_id != null;
+            const hasRepairCategory = data.st_repair_category_id != null;
+
+            if (hasService === hasRepairCategory) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ต้องเลือกบริการหรือหมวดซ่อมอย่างใดอย่างหนึ่ง"
+                };
+            }
+
+            const sql = `
                 INSERT INTO sub_task (
                     st_order_id,
                     st_service_id,
+                    st_repair_category_id,
                     st_name,
                     st_labor_cost,
                     st_sub_task_status_id
-                ) VALUES ($1, $2, $3, $4, $5)
-                RETURNING st_id AS id;
+                ) VALUES ($1, $2, $3, $4, $5, 1);
             `;
-
             await conn.query(sql, [
-                data.st_order_id,
-                data.st_service_id,
+                orderId,
+                data.st_service_id ?? null,
+                data.st_repair_category_id ?? null,
                 data.st_name,
-                data.st_labor_cost,
-                data.st_sub_task_status_id
+                data.st_labor_cost
             ]);
+
+            await conn.query("COMMIT");
 
             result = {
                 isError: false,
@@ -101,6 +110,9 @@ module.exports = {
             };
 
         } catch (error) {
+            if (conn)
+                await conn.query("ROLLBACK");
+
             result = {
                 isError: true,
                 data: null,
@@ -109,55 +121,64 @@ module.exports = {
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
     },
 
-    getSubTasksByOrderId: async (orderId) => {
+    getSubTasksByOrderId: async (orderId, accountId) => {
         let conn;
         let result;
 
         try {
             conn = await pool.connect();
 
-            // 1. ดึงรายการงานย่อยทั้งหมด
-            var subTaskSql = `
+            const subTaskSql = `
                 SELECT 
                     st.st_id AS id,
                     st.st_order_id AS order_id,
                     st.st_service_id AS service_id,
+                    st.st_repair_category_id AS repair_category_id,
+                    vrc.vrc_name AS repair_category_name,
                     st.st_name AS name,
                     st.st_labor_cost AS labor_cost,
                     st.st_sub_task_status_id AS status_id,
-                    sts.sts_name AS status_name
+                    sts.sts_name AS status_name,
+                    (stt_me.stt_id IS NOT NULL) AS accept_by_me
                 FROM sub_task st
                 INNER JOIN sub_task_status sts ON st.st_sub_task_status_id = sts.sts_id
+                LEFT JOIN vehicle_repair_category vrc ON st.st_repair_category_id = vrc.vrc_id
+                LEFT JOIN order_technician ot_me
+                    ON ot_me.ot_order_id = st.st_order_id
+                    AND ot_me.ot_account_id = $2
+                LEFT JOIN sub_task_technician stt_me
+                    ON stt_me.stt_sub_task_id = st.st_id
+                    AND stt_me.stt_order_technician_id = ot_me.ot_id
                 WHERE st.st_order_id = $1
                 ORDER BY st.st_id ASC;
             `;
-            var subTasks = await conn.query(subTaskSql, [orderId]);
+            const subTasks = await conn.query(subTaskSql, [orderId, accountId]);
 
-            // 2. ดึงช่างที่รับผิดชอบงานย่อยใน order นี้
-            var techSql = `
+            const techSql = `
                 SELECT 
                     stt.stt_sub_task_id AS sub_task_id,
                     acc.acc_id AS account_id,
-                    emp.emp_first_name AS firstname,
-                    emp.emp_last_name AS lastname,
+                    COALESCE(emp.emp_first_name, '') AS firstname,
+                    COALESCE(emp.emp_last_name, '') AS lastname,
                     COALESCE(ar.ar_name, '') AS role_name
                 FROM sub_task_technician stt
                 INNER JOIN order_technician ot ON stt.stt_order_technician_id = ot.ot_id
                 INNER JOIN account acc ON ot.ot_account_id = acc.acc_id
                 LEFT JOIN account_role ar ON acc.acc_role_id = ar.ar_id
-                INNER JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
                 WHERE ot.ot_order_id = $1;
             `;
-            var techRows = await conn.query(techSql, [orderId]);
+            const techRows = await conn.query(techSql, [orderId]);
 
-            // 3. ผูกข้อมูลช่างใส่งานย่อยแต่ละรายการ
-            for (let task of subTasks.rows) {
-                task.technicians = techRows.rows.filter(t => t.sub_task_id === task.id);
+            for (const task of subTasks.rows) {
+                task.technicians = techRows.rows.filter(
+                    (t) => t.sub_task_id === task.id
+                );
             }
 
             result = {
@@ -175,9 +196,9 @@ module.exports = {
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
     },
 
     acceptSubTask: async (subTaskId, orderId, accountId) => {
@@ -186,107 +207,54 @@ module.exports = {
 
         try {
             conn = await pool.connect();
+            await conn.query("BEGIN");
 
-            let otRes = await conn.query(
-                "SELECT ot_id FROM order_technician WHERE ot_order_id = $1 AND ot_account_id = $2",
-                [orderId, accountId]
-            );
+            const otSql = `
+                SELECT ot_id
+                FROM order_technician
+                WHERE ot_order_id = $1 AND ot_account_id = $2;
+            `;
+            const otRes = await conn.query(otSql, [orderId, accountId]);
+
             let otId;
             if (otRes.rows.length === 0) {
-                const newOt = await conn.query(
-                    "INSERT INTO order_technician (ot_order_id, ot_account_id) VALUES ($1, $2) RETURNING ot_id",
-                    [orderId, accountId]
-                );
-                otId = newOt.rows[0].ot_id;
+                const insertOtSql = `
+                    INSERT INTO order_technician (ot_order_id, ot_account_id, ot_assigned_at)
+                    VALUES ($1, $2, CURRENT_TIMESTAMP)
+                    RETURNING ot_id;
+                `;
+                const inserted = await conn.query(insertOtSql, [orderId, accountId]);
+                otId = inserted.rows[0].ot_id;
             } else {
                 otId = otRes.rows[0].ot_id;
             }
 
-            const existingStt = await conn.query(
-                "SELECT stt_id FROM sub_task_technician WHERE stt_sub_task_id = $1 AND stt_order_technician_id = $2",
-                [subTaskId, otId]
-            );
-            if (existingStt.rows.length === 0) {
-                await conn.query(
-                    "INSERT INTO sub_task_technician (stt_sub_task_id, stt_order_technician_id) VALUES ($1, $2)",
-                    [subTaskId, otId]
-                );
-            }
-
-            result = {
-                isError: false,
-                data: "รับงานสำเร็จ",
-                errorMessage: ""
-            };
-
-        } catch (error) {
-            result = {
-                isError: true,
-                data: "",
-                errorMessage: error.message
-            };
-        } finally {
-            if (conn)
-                conn.release();
-
-            return result;
-        }
-    },
-
-    cancelSubTask: async (subTaskId, orderId, accountId) => {
-        let conn;
-        let result;
-
-        try {
-            conn = await pool.connect();
-
-            let otRes = await conn.query(
-                "SELECT ot_id FROM order_technician WHERE ot_order_id = $1 AND ot_account_id = $2",
-                [orderId, accountId]
-            );
-
-            if (otRes.rows.length > 0) {
-                const otId = otRes.rows[0].ot_id;
-                await conn.query(
-                    "DELETE FROM sub_task_technician WHERE stt_sub_task_id = $1 AND stt_order_technician_id = $2",
-                    [subTaskId, otId]
-                );
-            }
-
-            result = {
-                isError: false,
-                data: "ยกเลิกสำเร็จ",
-                errorMessage: ""
-            };
-
-        } catch (error) {
-            result = {
-                isError: true,
-                data: "",
-                errorMessage: error.message
-            };
-        } finally {
-            if (conn)
-                conn.release();
-
-            return result;
-        }
-    },
-
-    updateSubTaskStatus: async (subTaskId, statusId) => {
-        let conn;
-        let result;
-
-        try {
-            conn = await pool.connect();
-
-            var sql = `
-                UPDATE sub_task 
-                SET st_sub_task_status_id = $1 
-                WHERE st_id = $2;
+            const checkSttSql = `
+                SELECT stt_id
+                FROM sub_task_technician
+                WHERE stt_sub_task_id = $1 AND stt_order_technician_id = $2;
             `;
+            const exist = await conn.query(checkSttSql, [subTaskId, otId]);
 
-            await conn.query(sql, [statusId, subTaskId]);
+            if (exist.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณได้รับงานซ่อมย่อยนี้ไปแล้ว"
+                };
+            }
+
+            const insertSttSql = `
+                INSERT INTO sub_task_technician (
+                    stt_sub_task_id,
+                    stt_order_technician_id,
+                    stt_assigned_at
+                ) VALUES ($1, $2, CURRENT_TIMESTAMP);
+            `;
+            await conn.query(insertSttSql, [subTaskId, otId]);
+
+            await conn.query("COMMIT");
 
             result = {
                 isError: false,
@@ -295,16 +263,145 @@ module.exports = {
             };
 
         } catch (error) {
+            if (conn)
+                await conn.query("ROLLBACK");
+
             result = {
                 isError: true,
-                data: "",
+                data: null,
                 errorMessage: error.message
             };
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
+    },
+
+    cancelSubTask: async (subTaskId, orderId, accountId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const otSql = `
+                SELECT ot_id
+                FROM order_technician
+                WHERE ot_order_id = $1 AND ot_account_id = $2;
+            `;
+            const otRes = await conn.query(otSql, [orderId, accountId]);
+
+            if (otRes.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณยังไม่ได้กดรับงานนี้"
+                };
+            }
+            const otId = otRes.rows[0].ot_id;
+
+            const delSql = `
+                DELETE FROM sub_task_technician
+                WHERE stt_sub_task_id = $1 AND stt_order_technician_id = $2;
+            `;
+            await conn.query(delSql, [subTaskId, otId]);
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: "สำเร็จ",
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            if (conn)
+                await conn.query("ROLLBACK");
+
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
+    },
+
+    updateSubTaskStatus: async (subTaskId, statusId, accountId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const checkSql = `
+                SELECT st.st_order_id
+                FROM sub_task_technician stt
+                INNER JOIN order_technician ot ON stt.stt_order_technician_id = ot.ot_id
+                INNER JOIN sub_task st ON st.st_id = stt.stt_sub_task_id
+                WHERE stt.stt_sub_task_id = $1 AND ot.ot_account_id = $2;
+            `;
+            const member = await conn.query(checkSql, [subTaskId, accountId]);
+
+            if (member.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณยังไม่ได้กดรับงานซ่อมย่อยนี้"
+                };
+            }
+            const orderId = member.rows[0].st_order_id;
+
+            const sql = `
+                UPDATE sub_task
+                SET st_sub_task_status_id = $1,
+                    st_updated_at = CURRENT_TIMESTAMP
+                WHERE st_id = $2;
+            `;
+            await conn.query(sql, [statusId, subTaskId]);
+
+            if (statusId === 2) {
+                const orderSql = `
+                    UPDATE orders
+                    SET o_order_status_id = 2,
+                        o_updated_at = CURRENT_TIMESTAMP
+                    WHERE o_id = $1 AND o_order_status_id = 1;
+                `;
+                await conn.query(orderSql, [orderId]);
+            }
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: "สำเร็จ",
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            if (conn)
+                await conn.query("ROLLBACK");
+
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
     }
 };

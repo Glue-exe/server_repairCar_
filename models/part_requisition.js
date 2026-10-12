@@ -1,7 +1,6 @@
 const pool = require('../libs/db_pool');
 
 module.exports = {
-    // ดึงอะไหล่ที่รองรับกับรุ่นรถของงานย่อยนี้ 
     getCompatibleParts: async (subTaskId) => {
         let conn;
         let result;
@@ -9,8 +8,8 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            var sql = `
-                SELECT DISTINCT
+            const sql = `
+                SELECT
                     p.part_id,
                     p.part_code,
                     p.part_name,
@@ -23,8 +22,8 @@ module.exports = {
                     pb.pb_name,
                     pc.pc_name
                 FROM part p
-                LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
-                LEFT JOIN part_category pc ON p.part_category_id = pc.pc_id
+                INNER JOIN part_brand pb ON p.part_brand_id = pb.pb_id
+                INNER JOIN part_category pc ON p.part_category_id = pc.pc_id
                 CROSS JOIN (
                     SELECT v.v_vehicle_model_id, v.v_year
                     FROM sub_task st
@@ -34,25 +33,25 @@ module.exports = {
                 ) veh
                 WHERE p.part_is_active = TRUE
                   AND (
-                      -- 1. Universal Part: ไม่มีการระบุรุ่นรถใน vehicle_part_compatibility (เบิกได้กับรถทุกคัน)
+                      -- Universal Part
                       NOT EXISTS (
                           SELECT 1 FROM vehicle_part_compatibility vpc_u 
                           WHERE vpc_u.vpc_part_id = p.part_id
                       )
                       OR
-                      -- 2. Model-Specific Part: ระบุรุ่นรถตรงกับรถคันใน Order (และช่วงปีตรงกัน)
+                      -- Model-Specific Part
                       EXISTS (
                           SELECT 1 FROM vehicle_part_compatibility vpc_m
                           WHERE vpc_m.vpc_part_id = p.part_id
                             AND vpc_m.vpc_vehicle_model_id = veh.v_vehicle_model_id
-                            AND (vpc_m.vpc_year_from IS NULL OR veh.v_year IS NULL OR veh.v_year >= vpc_m.vpc_year_from)
-                            AND (vpc_m.vpc_year_to IS NULL OR veh.v_year IS NULL OR veh.v_year <= vpc_m.vpc_year_to)
+                            AND (vpc_m.vpc_year_from IS NULL OR veh.v_year >= vpc_m.vpc_year_from)
+                            AND (vpc_m.vpc_year_to IS NULL OR veh.v_year <= vpc_m.vpc_year_to)
                       )
                   )
                 ORDER BY p.part_id ASC;
             `;
 
-            var rows = await conn.query(sql, [subTaskId]);
+            const rows = await conn.query(sql, [subTaskId]);
 
             result = {
                 isError: false,
@@ -63,18 +62,17 @@ module.exports = {
         } catch (error) {
             result = {
                 isError: true,
-                data: [],
+                data: null,
                 errorMessage: error.message
             };
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
     },
 
-    // ดึงประวัติใบเบิกอะไหล่ของงานย่อยนี้
     getRequestPartsBySubTaskId: async (subTaskId) => {
         let conn;
         let result;
@@ -82,7 +80,7 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            var sql = `
+            const sql = `
                 SELECT 
                     rp.rp_id AS id,
                     rp.rp_id,
@@ -94,20 +92,21 @@ module.exports = {
                     rp.rp_requested_at AS requested_at,
                     p.part_id,
                     p.part_name,
-                    p.part_price,
-                    p.part_brand,
+                    rpi.rpi_price AS part_price,
+                    pb.pb_name AS part_brand,
                     rpi.rpi_quantity AS quantity
                 FROM request_part rp
                 INNER JOIN req_part_status rps ON rp.rp_req_part_status_id = rps.rps_id
                 INNER JOIN request_part_item rpi ON rpi.rpi_request_part_id = rp.rp_id
                 INNER JOIN part p ON rpi.rpi_part_id = p.part_id
+                LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
                 LEFT JOIN account acc ON rp.rp_requested_by_account_id = acc.acc_id
                 LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
                 WHERE rp.rp_sub_task_id = $1
                 ORDER BY rp.rp_id DESC;
             `;
 
-            var rows = await conn.query(sql, [subTaskId]);
+            const rows = await conn.query(sql, [subTaskId]);
 
             result = {
                 isError: false,
@@ -118,21 +117,134 @@ module.exports = {
         } catch (error) {
             result = {
                 isError: true,
-                data: [],
+                data: null,
                 errorMessage: error.message
             };
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
     },
 
-    // สร้างใบสั่งเบิกอะไหล่
-    createRequestPart: async (data) => {
+    getRequestPartsForApproval: async (statusId) => {
         let conn;
         let result;
+
+        try {
+            conn = await pool.connect();
+
+            const sql = `
+                SELECT 
+                    rp.rp_id AS id,
+                    rp.rp_req_part_status_id AS status_id,
+                    rps.rps_name AS status_name,
+                    rp.rp_requested_by_account_id AS requested_by_account_id,
+                    CONCAT(emp.emp_first_name, ' ', emp.emp_last_name) AS requester_name,
+                    rp.rp_requested_at AS requested_at,
+                    o.o_id AS order_id,
+                    v.v_license_plate AS license_plate,
+                    CONCAT(vb.vb_name, ' ', vm.vm_name) AS vehicle_name,
+                    v.v_year AS vehicle_year,
+                    v.v_color AS vehicle_color,
+                    CONCAT(COALESCE(t.t_name, ''), c.cus_first_name, ' ', c.cus_last_name) AS customer_name,
+                    c.cus_phone AS customer_phone,
+                    st.st_name AS sub_task_name,
+                    p.part_id,
+                    p.part_name,
+                    p.part_url,
+                    pb.pb_name AS part_brand,
+                    rpi.rpi_quantity AS quantity,
+                    rpi.rpi_price AS price
+                FROM request_part rp
+                INNER JOIN req_part_status rps ON rp.rp_req_part_status_id = rps.rps_id
+                INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
+                INNER JOIN orders o ON st.st_order_id = o.o_id
+                INNER JOIN vehicle v ON o.o_vehicle_id = v.v_id
+                INNER JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
+                INNER JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
+                INNER JOIN customer c ON v.v_customer_id = c.cus_id
+                LEFT JOIN title t ON c.cus_title_id = t.t_id
+                INNER JOIN request_part_item rpi ON rpi.rpi_request_part_id = rp.rp_id
+                INNER JOIN part p ON rpi.rpi_part_id = p.part_id
+                LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
+                LEFT JOIN account acc ON rp.rp_requested_by_account_id = acc.acc_id
+                LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                WHERE rp.rp_req_part_status_id = $1
+                ORDER BY rp.rp_id DESC, rpi.rpi_id ASC;
+            `;
+            const rows = await conn.query(sql, [statusId]);
+
+            result = {
+                isError: false,
+                data: rows.rows,
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
+    },
+
+    getReqPartStatuses: async () => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+
+            const sql = `
+                SELECT 
+                    rps_id AS id,
+                    rps_name AS name
+                FROM req_part_status
+                ORDER BY rps_id ASC;
+            `;
+            const rows = await conn.query(sql);
+
+            result = {
+                isError: false,
+                data: rows.rows,
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
+    },
+
+    createRequestPart: async (data, accountId) => {
+        let conn;
+        let result;
+
+        const items = Array.isArray(data.items) ? data.items : [];
+
+        if (items.length === 0) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "ไม่มีรายการอะไหล่"
+            };
+        }
 
         try {
             conn = await pool.connect();
@@ -150,35 +262,27 @@ module.exports = {
             const rpRes = await conn.query(rpSql, [
                 data.sub_task_id,
                 1,
-                data.account_id
+                accountId
             ]);
             const requestPartId = rpRes.rows[0].rp_id;
 
-            // บันทึกรายการอะไหล่ request_part_item
+            // บันทึกทุกรายการอะไหล่ลงในใบเบิกเดียวกัน (ไม่ส่งราคามา = ใช้ราคามาตรฐานของ part)
             const rpiSql = `
                 INSERT INTO request_part_item (
                     rpi_request_part_id,
                     rpi_part_id,
-                    rpi_quantity
-                ) VALUES ($1, $2, $3)
-                RETURNING rpi_id;
+                    rpi_quantity,
+                    rpi_price
+                ) VALUES ($1, $2, $3, COALESCE($4, (SELECT part_price FROM part WHERE part_id = $2)));
             `;
-            const rpiRes = await conn.query(rpiSql, [
-                requestPartId,
-                data.part_id,
-                data.quantity
-            ]);
-            const rpiId = rpiRes.rows[0].rpi_id;
-
-            // สร้างรายการใน approval_part เพื่อรอให้อนุมัติ
-            const appSql = `
-                INSERT INTO approval_part (
-                    app_p_request_part_item_id,
-                    app_p_account_id,
-                    app_p_approval_status_id
-                ) VALUES ($1, NULL, 1);
-            `;
-            await conn.query(appSql, [rpiId]);
+            for (const item of items) {
+                await conn.query(rpiSql, [
+                    requestPartId,
+                    item.part_id,
+                    item.quantity,
+                    item.price
+                ]);
+            }
 
             await conn.query('COMMIT');
 
@@ -198,8 +302,52 @@ module.exports = {
         } finally {
             if (conn)
                 conn.release();
-
-            return result;
         }
+
+        return result;
+    },
+
+    updateRequestPartStatus: async (requestPartId, statusId, accountId) => {
+        let conn;
+        let result;
+
+        const status = Number(statusId);
+        if (status !== 2 && status !== 3) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "สถานะไม่ถูกต้อง"
+            };
+        }
+
+        try {
+            conn = await pool.connect();
+
+            const sql = `
+                UPDATE request_part
+                SET rp_req_part_status_id = $1,
+                    rp_approved_by_account_id = $2
+                WHERE rp_id = $3;
+            `;
+            await conn.query(sql, [status, accountId, requestPartId]);
+
+            result = {
+                isError: false,
+                data: "สำเร็จ",
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
     }
 };

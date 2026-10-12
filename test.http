@@ -84,7 +84,67 @@ Content-Type: application/json
 }
 
 ###
-POST http://localhost:3000/api/vehicle_search_licensePlate HTTP/1.1
+# ==================== ยี่ห้อรถ (vehicle_brand) ====================
+GET http://localhost:3000/api/vehicle_brand HTTP/1.1
+
+###
+POST http://localhost:3000/api/vehicle_brand HTTP/1.1
+Content-Type: application/json
+
+{
+    "vb_name": "Toyota"
+}
+
+###
+PUT http://localhost:3000/api/vehicle_brand HTTP/1.1
+Content-Type: application/json
+
+{
+    "vb_id": 1,
+    "vb_name": "Toyota"
+}
+
+###
+DELETE http://localhost:3000/api/vehicle_brand HTTP/1.1
+Content-Type: application/json
+
+{
+    "vb_id": 1
+}
+
+###
+# ==================== รุ่นรถ (vehicle_model) ====================
+GET http://localhost:3000/api/vehicle_model HTTP/1.1
+
+###
+POST http://localhost:3000/api/vehicle_model HTTP/1.1
+Content-Type: application/json
+
+{
+    "vm_brand_id": 1,
+    "vm_name": "Yaris"
+}
+
+###
+PUT http://localhost:3000/api/vehicle_model HTTP/1.1
+Content-Type: application/json
+
+{
+    "vm_id": 1,
+    "vm_brand_id": 1,
+    "vm_name": "Yaris"
+}
+
+###
+DELETE http://localhost:3000/api/vehicle_model HTTP/1.1
+Content-Type: application/json
+
+{
+    "vm_id": 1
+}
+
+###
+POST http://localhost:3000/api/vehicle_search_license_plate HTTP/1.1
 Content-Type: application/json
 
 {
@@ -124,37 +184,26 @@ Content-Type: application/json
 }
 
 ###
-POST http://localhost:3000/api/create_order HTTP/1.1
-Content-Type: application/json
+POST http://localhost:3000/api/order3/create HTTP/1.1
+Content-Type: multipart/form-data; boundary=----RepairCarBoundary
 
-{
-    "o_vehicle_id": 1,
-    "o_symptom": "เครื่องสั่น แอร์ไม่เย็น",
-    "o_priority_id": 1,
-    "o_order_status_id": 1,
-    "o_created_by_account_id": 1
-}
+------RepairCarBoundary
+Content-Disposition: form-data; name="o_vehicle_id"
+
+1
+------RepairCarBoundary
+Content-Disposition: form-data; name="o_symptom"
+
+เครื่องสั่น แอร์ไม่เย็น
+------RepairCarBoundary
+Content-Disposition: form-data; name="o_priority_id"
+
+1
+------RepairCarBoundary--
 
 ###
 GET http://localhost:3000/api/approval_part HTTP/1.1
 Content-Type: application/json
-
-###
-POST http://localhost:3000/api/createInvoice HTTP/1.1
-Content-Type: application/json
-
-{
-    "order_id": 1,
-    "created_by_account_id": 1
-}
-
-###
-POST http://localhost:3000/api/getInvoice HTTP/1.1
-Content-Type: application/json
-
-{
-    "order_id": 1
-}
 
 ###
 GET http://localhost:3000/api/dashboard/summary HTTP/1.1
@@ -222,3 +271,6 @@ Content-Type: application/json
 
 ###
 GET http://localhost:3000/api/get_employee HTTP/1.1
+
+###
+GET http://localhost:3000/api/order3 HTTP/1.1
