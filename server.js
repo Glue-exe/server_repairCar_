@@ -230,7 +230,7 @@ const checkAccessToken = (req, res, next) => {
 };
 
 app.get("/api/dashboard/summary", async (req, res) => {
-  const response = await dashboardModel.getSummaryData();
+  const response = await dashboardModel.getSummaryData(req.query.range);
   res.json(response);
 });
 
