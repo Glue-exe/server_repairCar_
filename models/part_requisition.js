@@ -73,7 +73,7 @@ module.exports = {
         return result;
     },
 
-    getRequestPartsBySubTaskId: async (subTaskId) => {
+    getRequestPartsBySubTaskId: async (subTaskId, accountId) => {
         let conn;
         let result;
 
@@ -90,6 +90,10 @@ module.exports = {
                     rp.rp_requested_by_account_id AS requested_by_account_id,
                     CONCAT(emp.emp_first_name, ' ', emp.emp_last_name) AS requester_name,
                     rp.rp_requested_at AS requested_at,
+                    rp.rp_cancelled_at AS cancelled_at,
+                    emp_c.emp_first_name || ' ' || emp_c.emp_last_name AS cancelled_by_name,
+                    (rp.rp_requested_by_account_id = $2
+                        AND rp.rp_req_part_status_id IN (1, 2)) AS can_cancel,
                     p.part_id,
                     p.part_name,
                     rpi.rpi_price AS part_price,
@@ -102,11 +106,13 @@ module.exports = {
                 LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
                 LEFT JOIN account acc ON rp.rp_requested_by_account_id = acc.acc_id
                 LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                LEFT JOIN account acc_c ON rp.rp_cancelled_by_account_id = acc_c.acc_id
+                LEFT JOIN employee emp_c ON acc_c.acc_employee_id = emp_c.emp_id
                 WHERE rp.rp_sub_task_id = $1
                 ORDER BY rp.rp_id DESC;
             `;
 
-            const rows = await conn.query(sql, [subTaskId]);
+            const rows = await conn.query(sql, [subTaskId, accountId]);
 
             result = {
                 isError: false,
@@ -266,7 +272,7 @@ module.exports = {
             ]);
             const requestPartId = rpRes.rows[0].rp_id;
 
-            // บันทึกทุกรายการอะไหล่ลงในใบเบิกเดียวกัน (ไม่ส่งราคามา = ใช้ราคามาตรฐานของ part)
+            // บันทึกทุกรายการอะไหล่ลงในใบเบิกเดียวกัน
             const rpiSql = `
                 INSERT INTO request_part_item (
                     rpi_request_part_id,
@@ -322,6 +328,34 @@ module.exports = {
 
         try {
             conn = await pool.connect();
+            await conn.query('BEGIN');
+
+            // check รออนุมัติ 
+            const checkSql = `
+                SELECT rp_req_part_status_id
+                FROM request_part
+                WHERE rp_id = $1
+                FOR UPDATE;
+            `;
+            const checkRes = await conn.query(checkSql, [requestPartId]);
+
+            if (checkRes.rows.length === 0) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบใบเบิกที่ระบุ"
+                };
+            }
+
+            if (checkRes.rows[0].rp_req_part_status_id !== 1) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ใบเบิกนี้ถูกดำเนินการไปแล้ว"
+                };
+            }
 
             const sql = `
                 UPDATE request_part
@@ -331,6 +365,8 @@ module.exports = {
             `;
             await conn.query(sql, [status, accountId, requestPartId]);
 
+            await conn.query('COMMIT');
+
             result = {
                 isError: false,
                 data: "สำเร็จ",
@@ -338,6 +374,89 @@ module.exports = {
             };
 
         } catch (error) {
+            if (conn) await conn.query('ROLLBACK');
+
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
+    },
+
+    cancelRequestPart: async (requestPartId, accountId) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            await conn.query('BEGIN');
+
+            // ยกเลิกได้เฉพาะใบของตัวเองที่ยังรออนุมัติหรืออนุมัติแล้ว (ปฏิเสธแล้ว/ยกเลิกซ้ำไม่ได้)
+            const checkSql = `
+                SELECT
+                    rp_req_part_status_id,
+                    rp_requested_by_account_id
+                FROM request_part
+                WHERE rp_id = $1
+                FOR UPDATE;
+            `;
+            const checkRes = await conn.query(checkSql, [requestPartId]);
+
+            if (checkRes.rows.length === 0) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบใบเบิกที่ระบุ"
+                };
+            }
+
+            const requestPart = checkRes.rows[0];
+
+            if (requestPart.rp_requested_by_account_id !== accountId) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณไม่ใช่ผู้ขอเบิก จึงยกเลิกใบนี้ไม่ได้"
+                };
+            }
+
+            if (requestPart.rp_req_part_status_id !== 1 && requestPart.rp_req_part_status_id !== 2) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ใบเบิกนี้ไม่อยู่ในสถานะที่ยกเลิกได้"
+                };
+            }
+
+            const sql = `
+                UPDATE request_part
+                SET rp_req_part_status_id = 4,
+                    rp_cancelled_by_account_id = $2,
+                    rp_cancelled_at = CURRENT_TIMESTAMP
+                WHERE rp_id = $1;
+            `;
+            await conn.query(sql, [requestPartId, accountId]);
+
+            await conn.query('COMMIT');
+
+            result = {
+                isError: false,
+                data: "สำเร็จ",
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            if (conn) await conn.query('ROLLBACK');
+
             result = {
                 isError: true,
                 data: null,

@@ -201,7 +201,7 @@ module.exports = {
         return result;
     },
 
-    acceptSubTask: async (subTaskId, orderId, accountId) => {
+    acceptSubTask: async (subTaskId, accountId) => {
         let conn;
         let result;
 
@@ -209,6 +209,25 @@ module.exports = {
             conn = await pool.connect();
             await conn.query("BEGIN");
 
+            // หา Order เจ้าของงานย่อย
+            const subTaskSql = `
+                SELECT st_order_id
+                FROM sub_task
+                WHERE st_id = $1;
+            `;
+            const subTaskRes = await conn.query(subTaskSql, [subTaskId]);
+
+            if (subTaskRes.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบงานซ่อมย่อยที่ระบุ"
+                };
+            }
+            const orderId = subTaskRes.rows[0].st_order_id;
+
+            // ต้องกดรับ Order หลักก่อน จึงจะรับงานย่อยได้
             const otSql = `
                 SELECT ot_id
                 FROM order_technician
@@ -216,18 +235,15 @@ module.exports = {
             `;
             const otRes = await conn.query(otSql, [orderId, accountId]);
 
-            let otId;
             if (otRes.rows.length === 0) {
-                const insertOtSql = `
-                    INSERT INTO order_technician (ot_order_id, ot_account_id, ot_assigned_at)
-                    VALUES ($1, $2, CURRENT_TIMESTAMP)
-                    RETURNING ot_id;
-                `;
-                const inserted = await conn.query(insertOtSql, [orderId, accountId]);
-                otId = inserted.rows[0].ot_id;
-            } else {
-                otId = otRes.rows[0].ot_id;
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณยังไม่ได้กดรับงานนี้"
+                };
             }
+            const otId = otRes.rows[0].ot_id;
 
             const checkSttSql = `
                 SELECT stt_id
@@ -279,13 +295,31 @@ module.exports = {
         return result;
     },
 
-    cancelSubTask: async (subTaskId, orderId, accountId) => {
+    cancelSubTask: async (subTaskId, accountId) => {
         let conn;
         let result;
 
         try {
             conn = await pool.connect();
             await conn.query("BEGIN");
+
+            // หา Order เจ้าของงานย่อย
+            const subTaskSql = `
+                SELECT st_order_id
+                FROM sub_task
+                WHERE st_id = $1;
+            `;
+            const subTaskRes = await conn.query(subTaskSql, [subTaskId]);
+
+            if (subTaskRes.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบงานซ่อมย่อยที่ระบุ"
+                };
+            }
+            const orderId = subTaskRes.rows[0].st_order_id;
 
             const otSql = `
                 SELECT ot_id

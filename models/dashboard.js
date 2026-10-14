@@ -1,6 +1,5 @@
 const pool = require('../libs/db_pool');
 
-// Dashboard ของ Owner — GET /api/dashboard/summary?range=today|week|month|year
 const ALLOWED_RANGES = ['today', 'week', 'month', 'year'];
 
 module.exports = {
@@ -15,7 +14,7 @@ module.exports = {
         try {
             conn = await pool.connect();
 
-            // ขอบเขตช่วงเวลา (ใช้ timezone ของ DB) — สัปดาห์เริ่มจันทร์ · ปี = กราฟรายเดือน, ช่วงอื่น = รายวัน
+            // ขอบเขตช่วงเวลา
             const bounds = await conn.query(
                 `
                 SELECT
@@ -30,18 +29,14 @@ module.exports = {
                         WHEN 'week'  THEN date_trunc('week', CURRENT_DATE::timestamptz) + INTERVAL '7 days'
                         WHEN 'year'  THEN date_trunc('year', CURRENT_DATE::timestamptz) + INTERVAL '1 year'
                         ELSE date_trunc('month', CURRENT_DATE::timestamptz) + INTERVAL '1 month'
-                    END AS range_end,
-                    CASE WHEN $1 = 'year' THEN 'month' ELSE 'day' END AS trend_unit
+                    END AS range_end
                 ;`,
                 [range]
             );
 
             const rangeStart = bounds.rows[0].range_start;
             const rangeEnd = bounds.rows[0].range_end;
-            const trendUnit = bounds.rows[0].trend_unit;
 
-            // KPI — รายได้/ค่าแรง/อะไหล่ = บิลชำระแล้วในช่วงที่เลือก
-            // unpaid = รวมทุกช่วง · activeRepairs = สถานะ 2 เท่านั้น (ตัวเลขปัจจุบัน)
             const kpi = await conn.query(
                 `
                 SELECT
@@ -54,12 +49,6 @@ module.exports = {
                             AND i_paid_at < $2
                     ) AS income,
                     (
-                        SELECT COALESCE(SUM(i_total), 0)::FLOAT
-                        FROM invoice
-                        WHERE i_payment_status_id = 1
-                            AND i_cancelled_at IS NULL
-                    ) AS "unpaidTotal",
-                    (
                         SELECT COUNT(*)::INT
                         FROM orders
                         WHERE o_created_at >= $1
@@ -68,8 +57,23 @@ module.exports = {
                     (
                         SELECT COUNT(*)::INT
                         FROM orders
+                        WHERE o_order_status_id = 1
+                    ) AS "pendingRepairs",
+                    (
+                        SELECT COUNT(*)::INT
+                        FROM orders
                         WHERE o_order_status_id = 2
                     ) AS "activeRepairs",
+                    (
+                        SELECT COUNT(*)::INT
+                        FROM orders
+                        WHERE o_order_status_id = 3
+                    ) AS "awaitingPickup",
+                    (
+                        SELECT COUNT(*)::INT
+                        FROM request_part
+                        WHERE rp_req_part_status_id = 1
+                    ) AS "pendingPartApprovals",
                     (
                         SELECT COALESCE(SUM(i_labor_total), 0)::FLOAT
                         FROM invoice
@@ -90,48 +94,110 @@ module.exports = {
                 [rangeStart, rangeEnd]
             );
 
-            // กราฟแนวโน้ม — เติมวัน/เดือนที่รายได้ 0 ให้กรอบเวลาครบ (generate_series)
-            const trend = await conn.query(
-                `
-                WITH paid AS (
+            result = {
+                isError: false,
+                data: {
+                    range: range,
+                    ...kpi.rows[0],
+                },
+                errorMessage: "",
+            };
+        } catch (error) {
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message,
+            };
+        } finally {
+            if (conn) {
+                conn.release();
+            }
+        }
+
+        return result;
+    },
+
+    // รายงานกำไรสุทธิ
+
+    getProfitReport: async (mode) => {
+        if (mode !== 'year') {
+            mode = 'month';
+        }
+
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+
+            if (mode === 'year') {
+                const rows = await conn.query(
+                    `
                     SELECT
-                        date_trunc(CASE WHEN $3 = 'month' THEN 'month' ELSE 'day' END, i_paid_at) AS period,
-                        SUM(i_total) AS total
+                        TO_CHAR(i_paid_at, 'YYYY') AS period,
+                        SUM(i_total)::FLOAT AS income,
+                        SUM(i_parts_total)::FLOAT AS expense,
+                        SUM(i_labor_total)::FLOAT AS profit
                     FROM invoice
                     WHERE i_payment_status_id = 2
                         AND i_cancelled_at IS NULL
-                        AND i_paid_at >= $1
-                        AND i_paid_at < $2
-                    GROUP BY 1
-                )
-                SELECT
-                    TO_CHAR(
-                        gs.period,
-                        CASE WHEN $3 = 'month' THEN 'YYYY-MM' ELSE 'YYYY-MM-DD' END
-                    ) AS period,
-                    COALESCE(p.total, 0)::FLOAT AS total
-                FROM generate_series(
-                    $1::timestamptz,
-                    $2::timestamptz - (CASE WHEN $3 = 'month' THEN INTERVAL '1 month' ELSE INTERVAL '1 day' END) / 2,
-                    CASE WHEN $3 = 'month' THEN INTERVAL '1 month' ELSE INTERVAL '1 day' END
-                ) AS gs(period)
-                LEFT JOIN paid p ON p.period = gs.period
-                ORDER BY gs.period
-                ;`,
-                [rangeStart, rangeEnd, trendUnit]
-            );
+                        AND i_paid_at IS NOT NULL
+                    GROUP BY TO_CHAR(i_paid_at, 'YYYY')
+                    ORDER BY period ASC;
+                    `
+                );
 
-            const data = {
-                range: range,
-                ...kpi.rows[0],
-                trend: trend.rows,
-            };
+                result = {
+                    isError: false,
+                    data: rows.rows,
+                    errorMessage: "",
+                };
+            } else {
+                // ขอบเขต 12 เดือนล่าสุด (รวมเดือนปัจจุบัน)
+                const bounds = await conn.query(
+                    `
+                    SELECT
+                        date_trunc('month', CURRENT_DATE::timestamptz) - INTERVAL '11 months' AS range_start,
+                        date_trunc('month', CURRENT_DATE::timestamptz) + INTERVAL '1 month' AS range_end;
+                    `
+                );
 
-            result = {
-                isError: false,
-                data: data,
-                errorMessage: "",
-            };
+                const rangeStart = bounds.rows[0].range_start;
+                const rangeEnd = bounds.rows[0].range_end;
+
+                const rows = await conn.query(
+                    `
+                    WITH paid AS (
+                        SELECT
+                            date_trunc('month', i_paid_at) AS period,
+                            SUM(i_total) AS income,
+                            SUM(i_parts_total) AS expense,
+                            SUM(i_labor_total) AS profit
+                        FROM invoice
+                        WHERE i_payment_status_id = 2
+                            AND i_cancelled_at IS NULL
+                            AND i_paid_at >= $1
+                            AND i_paid_at < $2
+                        GROUP BY 1
+                    )
+                    SELECT
+                        TO_CHAR(gs.period, 'YYYY-MM') AS period,
+                        COALESCE(p.income, 0)::FLOAT AS income,
+                        COALESCE(p.expense, 0)::FLOAT AS expense,
+                        COALESCE(p.profit, 0)::FLOAT AS profit
+                    FROM generate_series($1::timestamptz, $2::timestamptz - INTERVAL '15 days', INTERVAL '1 month') AS gs(period)
+                    LEFT JOIN paid p ON p.period = gs.period
+                    ORDER BY gs.period ASC;
+                    `,
+                    [rangeStart, rangeEnd]
+                );
+
+                result = {
+                    isError: false,
+                    data: rows.rows,
+                    errorMessage: "",
+                };
+            }
         } catch (error) {
             result = {
                 isError: true,
