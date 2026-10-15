@@ -379,6 +379,14 @@ app.post("/api/sub_task/cancel", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
+// ลบงานซ่อมย่อย — เช็ค 3 ข้อใน deleteSubTask (อยู่ใน order_technician → อยู่ใน sub_task_technician → สถานะยังรอดำเนินการ)
+app.post("/api/sub_task/delete", checkAccessToken, async (req, res) => {
+  const subTaskId = req.body.sub_task_id;
+  const accountId = req.user.user_id;
+  const response = await subTaskModel.deleteSubTask(subTaskId, accountId);
+  res.json(response);
+});
+
 app.post("/api/sub_task/update_status", checkAccessToken, async (req, res) => {
   const { sub_task_id, status_id } = req.body;
   const accountId = req.user.user_id;

@@ -369,6 +369,140 @@ module.exports = {
         return result;
     },
 
+    deleteSubTask: async (subTaskId, accountId) => {
+        let conn;
+        let result;
+
+        if (!accountId) {
+            return {
+                isError: true,
+                data: null,
+                errorMessage: "ไม่พบข้อมูลผู้ใช้งาน"
+            };
+        }
+
+        try {
+            conn = await pool.connect();
+            await conn.query("BEGIN");
+
+            const subTaskSql = `
+                SELECT st_order_id, st_sub_task_status_id
+                FROM sub_task
+                WHERE st_id = $1;
+            `;
+            const subTaskRes = await conn.query(subTaskSql, [subTaskId]);
+
+            if (subTaskRes.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบงานซ่อมย่อยที่ระบุ"
+                };
+            }
+            const orderId = subTaskRes.rows[0].st_order_id;
+            const statusId = subTaskRes.rows[0].st_sub_task_status_id;
+
+            const otSql = `
+                SELECT ot_id
+                FROM order_technician
+                WHERE ot_order_id = $1 AND ot_account_id = $2;
+            `;
+            const otRes = await conn.query(otSql, [orderId, accountId]);
+
+            if (otRes.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณยังไม่ได้กดรับงานนี้"
+                };
+            }
+            const otId = otRes.rows[0].ot_id;
+
+            const sttSql = `
+                SELECT stt_id
+                FROM sub_task_technician
+                WHERE stt_sub_task_id = $1 AND stt_order_technician_id = $2;
+            `;
+            const sttRes = await conn.query(sttSql, [subTaskId, otId]);
+
+            if (sttRes.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "คุณยังไม่ได้กดรับงานซ่อมย่อยนี้"
+                };
+            }
+
+            if (statusId !== 1) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ลบได้เฉพาะงานซ่อมย่อยที่ยังรอดำเนินการ"
+                };
+            }
+
+            const partSql = `
+                SELECT rp_id
+                FROM request_part
+                WHERE rp_sub_task_id = $1
+                LIMIT 1;
+            `;
+            const partRes = await conn.query(partSql, [subTaskId]);
+
+            if (partRes.rows.length > 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ลบไม่ได้ เนื่องจากงานซ่อมย่อยนี้มีใบเบิกอะไหล่แล้ว"
+                };
+            }
+
+            const delSql = `
+                DELETE FROM sub_task
+                WHERE st_id = $1
+                RETURNING st_id;
+            `;
+            const deleted = await conn.query(delSql, [subTaskId]);
+
+            if (deleted.rows.length === 0) {
+                await conn.query("ROLLBACK");
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบงานซ่อมย่อยที่ระบุ"
+                };
+            }
+
+            await conn.query("COMMIT");
+
+            result = {
+                isError: false,
+                data: "สำเร็จ",
+                errorMessage: ""
+            };
+
+        } catch (error) {
+            if (conn)
+                await conn.query("ROLLBACK");
+
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn)
+                conn.release();
+        }
+
+        return result;
+    },
+
     updateSubTaskStatus: async (subTaskId, statusId, accountId) => {
         let conn;
         let result;
