@@ -214,6 +214,15 @@ Content-Type: application/json
 }
 
 ###
+# ==================== รายงานกำไรสุทธิ (Owner Dashboard) ====================
+# หมายเหตุ: ต้องแนบ token — Authorization: Bearer <access_token>
+# mode=month = 12 เดือนล่าสุด (ค่าเริ่มต้น) · mode=year = รายปี
+GET http://localhost:3000/api/dashboard/profit_report?mode=month HTTP/1.1
+
+###
+GET http://localhost:3000/api/dashboard/profit_report?mode=year HTTP/1.1
+
+###
 GET http://localhost:3000/api/get_employee HTTP/1.1
 Content-Type: application/json
 {
@@ -273,8 +282,51 @@ Content-Type: application/json
 GET http://localhost:3000/api/get_employee HTTP/1.1
 
 ###
+GET http://localhost:3000/api/order3 HTTP/1.1
 
+###
+# ==================== ใบเบิกอะไหล่ (request_part) ====================
+# หมายเหตุ: ทุก request ต้องแนบ token — Authorization: Bearer <access_token>
+# can_cancel ในผลลัพธ์คำนวณจาก token (ผู้ขอเบิกของใบนั้น + สถานะ 1 รออนุมัติ หรือ 2 อนุมัติแล้ว)
 
+###
+# ดูใบเบิกของงานซ่อมย่อย
+GET http://localhost:3000/api/request_parts?sub_task_id=14 HTTP/1.1
 
+###
+# ยกเลิกใบเบิก (ผู้ขอเบิกของใบนั้น · สถานะ 1 หรือ 2 — ใบที่ปฏิเสธ/ยกเลิกไปแล้วยกเลิกซ้ำไม่ได้)
+POST http://localhost:3000/api/request_part/cancel HTTP/1.1
+Content-Type: application/json
 
+{
+    "request_part_id": 21
+}
 
+###
+# อนุมัติ / ปฏิเสธใบเบิก (เจ้าของร้าน: 2 = อนุมัติ, 3 = ปฏิเสธ — เฉพาะใบที่รออนุมัติ)
+POST http://localhost:3000/api/request_part/update_status HTTP/1.1
+Content-Type: application/json
+
+{
+    "request_part_id": 22,
+    "status_id": 2
+}
+
+###
+# ==================== งานซ่อมย่อย (sub_task) ====================
+# กดรับงานย่อย — ต้องกดรับ Order หลักก่อน ไม่งั้นได้ "คุณยังไม่ได้กดรับงานนี้"
+POST http://localhost:3000/api/sub_task/accept HTTP/1.1
+Content-Type: application/json
+
+{
+    "sub_task_id": 14
+}
+
+###
+# ยกเลิกรับงานย่อย
+POST http://localhost:3000/api/sub_task/cancel HTTP/1.1
+Content-Type: application/json
+
+{
+    "sub_task_id": 14
+}
