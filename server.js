@@ -33,6 +33,7 @@ const paymentStatusModel = require("./models/payment_status.js");
 const priorityModel = require("./models/priority.js");
 const orderStatusModel = require("./models/order_status.js");
 const salaryHistoryModel = require("./models/salary_history.js");
+const accountantModel = require("./models/accountant.js");
 
 const app = express();
 
@@ -65,6 +66,8 @@ const uploadOrder = makeUpload("order");
 const uploadPart = makeUpload("part");
 const uploadInvoice = makeUpload("invoice");
 const uploadService = makeUpload("service");
+const uploadShopQr = makeUpload("shop_qr");
+const uploadSlip = makeUpload("slip");
 
 // ห่อ multer ให้คืน envelope แทนการโยน error ออกไป
 const runImageUpload = (uploadMiddleware) => {
@@ -856,6 +859,109 @@ app.get("/api/salary_history", checkAccessToken, async (req, res) => {
 
 app.put("/api/salary_history", checkAccessToken, async (req, res) => {
   const response = await salaryHistoryModel.putUpdateSalary(req.body);
+  res.json(response);
+});
+
+// ----- Accountant API Endpoints -----
+app.get("/api/accountant/summary", checkAccessToken, async (req, res) => {
+  const response = await accountantModel.getSummary();
+  res.json(response);
+});
+
+app.get("/api/accountant/orders", checkAccessToken, async (req, res) => {
+  const type = req.query.type || "pending";
+  const search = req.query.search || "";
+  const response = await accountantModel.getOrders({ type, search });
+  res.json(response);
+});
+
+app.post(
+  "/api/accountant/pay",
+  checkAccessToken,
+  runImageUpload(uploadSlip.single("file")),
+  async (req, res) => {
+    const account_id = req.user?.user_id || req.user?.account_id || 1;
+    const order_id = parseInt(req.body.order_id, 10);
+    const payment_method_id = parseInt(req.body.payment_method_id, 10);
+    const parts_total = parseFloat(req.body.parts_total || 0);
+    const labor_total = parseFloat(req.body.labor_total || 0);
+    const total = parseFloat(req.body.total || 0);
+    const slip_image_url = req.file ? req.file.filename : (req.body.slip_image_url || null);
+
+    // ถ้าเป็นการโอนเงิน แต่ไม่มีรูปสลิป
+    if (payment_method_id === 2 && !slip_image_url) {
+      if (req.file) {
+        fs.unlink(path.join("uploads", req.file.filename), () => {});
+      }
+      return res.json({
+        isError: true,
+        data: null,
+        errorMessage: "กรุณาแนบภาพสลิปหลักฐานการโอนเงิน",
+      });
+    }
+
+    const response = await accountantModel.payOrder({
+      order_id,
+      payment_method_id,
+      parts_total,
+      labor_total,
+      total,
+      slip_image_url,
+      account_id,
+    });
+
+    if (response.isError && req.file) {
+      fs.unlink(path.join("uploads", req.file.filename), () => {});
+    }
+
+    res.json(response);
+  }
+);
+
+app.get("/api/accountant/payment_methods", checkAccessToken, async (req, res) => {
+  const response = await accountantModel.getPaymentMethods();
+  res.json(response);
+});
+
+// ดึงภาพ QR Code ของร้านค้า
+app.get("/api/accountant/shop_qr", checkAccessToken, async (req, res) => {
+  const response = await accountantModel.getShopQr();
+  res.json(response);
+});
+
+// อัปโหลด / แก้ไข QR Code ของร้านค้า
+app.post(
+  "/api/accountant/shop_qr",
+  checkAccessToken,
+  runImageUpload(uploadShopQr.single("file")),
+  async (req, res) => {
+    if (!req.file) {
+      return res.json({
+        isError: true,
+        data: null,
+        errorMessage: "กรุณาเลือกไฟล์ภาพ QR Code",
+      });
+    }
+
+    const response = await accountantModel.updateShopQr(req.file.filename);
+    if (response.isError) {
+      fs.unlink(path.join("uploads", req.file.filename), () => {});
+    } else if (
+      response.data &&
+      response.data.old_qr_image &&
+      response.data.old_qr_image !== "shop_qr_default.png"
+    ) {
+      fs.unlink(path.join("uploads", response.data.old_qr_image), () => {});
+    }
+
+    res.json(response);
+  }
+);
+
+// ดึงรายงานสรุปรายได้ตามช่วงเวลา แนวโน้ม และรายการใบเสร็จ
+app.get("/api/accountant/revenue_report", checkAccessToken, async (req, res) => {
+  const { startDate, endDate, groupBy } = req.query;
+  const response = await accountantModel.getRevenueReport({ startDate, endDate, groupBy });
   res.json(response);
 });
 
