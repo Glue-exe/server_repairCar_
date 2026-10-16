@@ -144,7 +144,7 @@ module.exports = {
                         INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
                         WHERE st.st_order_id = $1
                             AND st.st_sub_task_status_id = 3
-                            AND rp.rp_req_part_status_id = 2;
+                            AND rp.rp_req_part_status_id IN (2, 5, 6);
                     `,
                     [orderId]
                 );
@@ -219,7 +219,7 @@ module.exports = {
                         LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
                         WHERE st.st_order_id = $2
                             AND st.st_sub_task_status_id = 3
-                            AND rp.rp_req_part_status_id = 2;
+                            AND rp.rp_req_part_status_id IN (2, 5, 6);
                     `,
                     [invoiceId, orderId]
                 );

@@ -22,7 +22,7 @@ module.exports = {
                             JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                             JOIN part p ON rpi.rpi_part_id = p.part_id
                             WHERE rp.rp_sub_task_id IN (SELECT st_id FROM sub_task WHERE st_order_id = o.o_id)
-                              AND (rp.rp_req_part_status_id = 2 OR rp.rp_req_part_status_id IS NULL)
+                              AND (rp.rp_req_part_status_id IN (2, 5, 6) OR rp.rp_req_part_status_id IS NULL)
                               AND rp.rp_cancelled_at IS NULL
                         ), 0) AS est_total
                     FROM sub_task st
@@ -174,7 +174,7 @@ module.exports = {
                       JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                       JOIN part p ON rpi.rpi_part_id = p.part_id
                       WHERE rp.rp_sub_task_id IN (SELECT st_id FROM sub_task WHERE st_order_id = o.o_id)
-                        AND (rp.rp_req_part_status_id = 2 OR rp.rp_req_part_status_id IS NULL)
+                        AND (rp.rp_req_part_status_id IN (2, 5, 6) OR rp.rp_req_part_status_id IS NULL)
                         AND rp.rp_cancelled_at IS NULL
                   ), 0)::FLOAT AS parts_cost
               FROM sub_task st
@@ -258,7 +258,7 @@ module.exports = {
             INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
             WHERE st.st_order_id = $1
               AND st.st_sub_task_status_id = 3
-              AND rp.rp_req_part_status_id = 2;
+              AND rp.rp_req_part_status_id IN (2, 5, 6);
           `,
           [order_id]
         );
@@ -336,7 +336,7 @@ module.exports = {
             LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
             WHERE st.st_order_id = $2
                 AND st.st_sub_task_status_id = 3
-                AND rp.rp_req_part_status_id = 2;
+                AND rp.rp_req_part_status_id IN (2, 5, 6);
           `,
           [invoiceId, order_id]
         );
@@ -530,7 +530,7 @@ module.exports = {
                     JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                     JOIN part p ON rpi.rpi_part_id = p.part_id
                     WHERE rp.rp_sub_task_id IN (SELECT st_id FROM sub_task WHERE st_order_id = o.o_id)
-                      AND (rp.rp_req_part_status_id = 2 OR rp.rp_req_part_status_id IS NULL)
+                      AND (rp.rp_req_part_status_id IN (2, 5, 6) OR rp.rp_req_part_status_id IS NULL)
                       AND rp.rp_cancelled_at IS NULL
                 ), 0)::FLOAT AS parts_cost
             FROM sub_task st
@@ -603,7 +603,7 @@ module.exports = {
                       JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                       JOIN part p ON rpi.rpi_part_id = p.part_id
                       WHERE rp.rp_sub_task_id IN (SELECT st_id FROM sub_task WHERE st_order_id = o.o_id)
-                        AND (rp.rp_req_part_status_id = 2 OR rp.rp_req_part_status_id IS NULL)
+                        AND (rp.rp_req_part_status_id IN (2, 5, 6) OR rp.rp_req_part_status_id IS NULL)
                         AND rp.rp_cancelled_at IS NULL
                   ), 0)::FLOAT AS parts_cost
               FROM sub_task st
