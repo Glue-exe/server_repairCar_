@@ -883,9 +883,6 @@ app.post(
     const account_id = req.user?.user_id || req.user?.account_id || 1;
     const order_id = parseInt(req.body.order_id, 10);
     const payment_method_id = parseInt(req.body.payment_method_id, 10);
-    const parts_total = parseFloat(req.body.parts_total || 0);
-    const labor_total = parseFloat(req.body.labor_total || 0);
-    const total = parseFloat(req.body.total || 0);
     const slip_image_url = req.file ? req.file.filename : (req.body.slip_image_url || null);
 
     // ถ้าเป็นการโอนเงิน แต่ไม่มีรูปสลิป
@@ -903,9 +900,6 @@ app.post(
     const response = await accountantModel.payOrder({
       order_id,
       payment_method_id,
-      parts_total,
-      labor_total,
-      total,
       slip_image_url,
       account_id,
     });
@@ -960,12 +954,12 @@ app.post(
 
 // ดึงรายงานสรุปรายได้ตามช่วงเวลา แนวโน้ม และรายการใบเสร็จ
 app.get("/api/accountant/revenue_report", checkAccessToken, async (req, res) => {
-  const { startDate, endDate, groupBy } = req.query;
-  const response = await accountantModel.getRevenueReport({ startDate, endDate, groupBy });
+  const { startDate, endDate, groupBy, status } = req.query;
+  const response = await accountantModel.getRevenueReport({ startDate, endDate, groupBy, status });
   res.json(response);
 });
 
-const hostname = "0.0.0.0";
+const hostname = "127.0.0.1";
 const port = 3000;
 
 app.listen(port, hostname, () => {
