@@ -214,6 +214,15 @@ Content-Type: application/json
 }
 
 ###
+# ==================== รายงานกำไรสุทธิ (Owner Dashboard) ====================
+# หมายเหตุ: ต้องแนบ token — Authorization: Bearer <access_token>
+# mode=month = 12 เดือนล่าสุด (ค่าเริ่มต้น) · mode=year = รายปี
+GET http://localhost:3000/api/dashboard/profit_report?mode=month HTTP/1.1
+
+###
+GET http://localhost:3000/api/dashboard/profit_report?mode=year HTTP/1.1
+
+###
 GET http://localhost:3000/api/get_employee HTTP/1.1
 Content-Type: application/json
 {
@@ -272,7 +281,7 @@ Content-Type: application/json
 ###
 GET http://localhost:3000/api/get_employee HTTP/1.1
 
-###
+
 
 
 

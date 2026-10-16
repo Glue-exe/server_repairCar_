@@ -233,7 +233,12 @@ const checkAccessToken = (req, res, next) => {
 };
 
 app.get("/api/dashboard/summary", async (req, res) => {
-  const response = await dashboardModel.getSummaryData();
+  const response = await dashboardModel.getSummaryData(req.query.range);
+  res.json(response);
+});
+
+app.get("/api/dashboard/profit_report", checkAccessToken, async (req, res) => {
+  const response = await dashboardModel.getProfitReport(req.query.mode);
   res.json(response);
 });
 
@@ -365,25 +370,23 @@ app.get("/api/sub_tasks", checkAccessToken, async (req, res) => {
 
 app.post("/api/sub_task/accept", checkAccessToken, async (req, res) => {
   const subTaskId = req.body.sub_task_id;
-  const orderId = req.body.order_id;
   const accountId = req.user.user_id;
-  const response = await subTaskModel.acceptSubTask(
-    subTaskId,
-    orderId,
-    accountId,
-  );
+  const response = await subTaskModel.acceptSubTask(subTaskId, accountId);
   res.json(response);
 });
 
 app.post("/api/sub_task/cancel", checkAccessToken, async (req, res) => {
   const subTaskId = req.body.sub_task_id;
-  const orderId = req.body.order_id;
   const accountId = req.user.user_id;
-  const response = await subTaskModel.cancelSubTask(
-    subTaskId,
-    orderId,
-    accountId,
-  );
+  const response = await subTaskModel.cancelSubTask(subTaskId, accountId);
+  res.json(response);
+});
+
+// ลบงานซ่อมย่อย — เช็ค 3 ข้อใน deleteSubTask (อยู่ใน order_technician → อยู่ใน sub_task_technician → สถานะยังรอดำเนินการ)
+app.post("/api/sub_task/delete", checkAccessToken, async (req, res) => {
+  const subTaskId = req.body.sub_task_id;
+  const accountId = req.user.user_id;
+  const response = await subTaskModel.deleteSubTask(subTaskId, accountId);
   res.json(response);
 });
 
@@ -707,8 +710,9 @@ app.get("/api/compatible_parts", checkAccessToken, async (req, res) => {
 
 app.get("/api/request_parts", checkAccessToken, async (req, res) => {
   const subTaskId = req.query.sub_task_id;
+  const accountId = req.user.user_id;
   const response =
-    await partRequisitionModel.getRequestPartsBySubTaskId(subTaskId);
+    await partRequisitionModel.getRequestPartsBySubTaskId(subTaskId, accountId);
   res.json(response);
 });
 
@@ -745,6 +749,14 @@ app.post("/api/request_part/update_status", checkAccessToken, async (req, res) =
     res.json(response);
   },
 );
+
+app.post("/api/request_part/cancel", checkAccessToken, async (req, res) => {
+  const response = await partRequisitionModel.cancelRequestPart(
+    req.body.request_part_id,
+    req.user.user_id,
+  );
+  res.json(response);
+});
 
 app.get("/api/payment_methods", checkAccessToken, async (req, res) => {
   const response = await paymentMethodModel.getPaymentMethod();
