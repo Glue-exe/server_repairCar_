@@ -97,7 +97,7 @@ module.exports = {
         // ชำระแล้ว
         conditions.push("inv.i_payment_status_id = 2 AND inv.i_cancelled_at IS NULL");
       } else {
-        // รอชำระ: มี invoice สถานะ 1 หรือยังไม่มี invoice แต่กำลังซ่อม/ซ่อมเสร็จสิ้น
+        // รอชำระ: มี invoice สถานะ 1 หรือยังไม่มี invoice แต่งานอยู่ในสถานะกำลังซ่อม/ซ่อมเสร็จสิ้น (order_status_id IN (2, 3))
         conditions.push(
           "(inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3))"
         );
@@ -207,9 +207,6 @@ module.exports = {
   payOrder: async ({
     order_id,
     payment_method_id,
-    parts_total = 0,
-    labor_total = 0,
-    total = 0,
     slip_image_url = null,
     account_id = 1,
   }) => {
@@ -219,36 +216,55 @@ module.exports = {
       await conn.query("BEGIN");
 
       // 1. ตรวจสอบว่ามี invoice อยู่แล้วหรือไม่
-      const checkInvSql = `SELECT i_id, i_image_url FROM invoice WHERE i_order_id = $1 AND i_cancelled_at IS NULL LIMIT 1;`;
+      const checkInvSql = `SELECT i_id, i_parts_total, i_labor_total, i_total, i_image_url FROM invoice WHERE i_order_id = $1 AND i_cancelled_at IS NULL LIMIT 1;`;
       const checkRes = await conn.query(checkInvSql, [order_id]);
 
       let invoiceId;
       if (checkRes.rows.length > 0) {
+        // มี invoice อยู่แล้ว: ใช้ยอดเดิมจาก snapshot ในตาราง invoice ไม่เขียนทับยอด!
         invoiceId = checkRes.rows[0].i_id;
         const updateInvSql = `
             UPDATE invoice
             SET 
-                i_parts_total = $1,
-                i_labor_total = $2,
-                i_total = $3,
-                i_payment_method_id = $4,
+                i_payment_method_id = $1,
                 i_payment_status_id = 2,
                 i_paid_at = CURRENT_TIMESTAMP,
-                i_created_by_account_id = $5,
-                i_image_url = COALESCE($6, i_image_url)
-            WHERE i_id = $7
+                i_image_url = COALESCE($2, i_image_url)
+            WHERE i_id = $3
             RETURNING *;
         `;
         await conn.query(updateInvSql, [
-          parts_total,
-          labor_total,
-          total,
           payment_method_id,
-          account_id,
           slip_image_url,
           invoiceId,
         ]);
       } else {
+        // ยังไม่มี invoice: สร้าง snapshot ฝั่งเซิร์ฟเวอร์เหมือน invoice2.js (sub_task สถานะ 3 + request_part_item สถานะ 2)
+        const laborRes = await conn.query(
+          `
+            SELECT COALESCE(SUM(st_labor_cost), 0.00)::FLOAT AS labor_total
+            FROM sub_task
+            WHERE st_order_id = $1 AND st_sub_task_status_id = 3;
+          `,
+          [order_id]
+        );
+        const labor_total = laborRes.rows[0]?.labor_total || 0;
+
+        const partsRes = await conn.query(
+          `
+            SELECT COALESCE(SUM(rpi.rpi_quantity * rpi.rpi_price), 0.00)::FLOAT AS parts_total
+            FROM request_part_item rpi
+            INNER JOIN request_part rp ON rpi.rpi_request_part_id = rp.rp_id
+            INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
+            WHERE st.st_order_id = $1
+              AND st.st_sub_task_status_id = 3
+              AND rp.rp_req_part_status_id = 2;
+          `,
+          [order_id]
+        );
+        const parts_total = partsRes.rows[0]?.parts_total || 0;
+        const total = labor_total + parts_total;
+
         const insertInvSql = `
             INSERT INTO invoice (
                 i_order_id, i_parts_total, i_labor_total, i_total, 
@@ -267,6 +283,63 @@ module.exports = {
           slip_image_url,
         ]);
         invoiceId = insertRes.rows[0].i_id;
+
+        // บันทึก invoice_line รายการค่าแรง
+        await conn.query(
+          `
+            INSERT INTO invoice_line (
+                il_invoice_id,
+                il_type,
+                il_sub_task_id,
+                il_name,
+                il_quantity,
+                il_unit_price,
+                il_total
+            )
+            SELECT $1, 'labor', st_id, st_name, 1, st_labor_cost, st_labor_cost
+            FROM sub_task
+            WHERE st_order_id = $2 AND st_sub_task_status_id = 3;
+          `,
+          [invoiceId, order_id]
+        );
+
+        // บันทึก invoice_line รายการอะไหล่
+        await conn.query(
+          `
+            INSERT INTO invoice_line (
+                il_invoice_id,
+                il_type,
+                il_sub_task_id,
+                il_part_id,
+                il_name,
+                il_brand,
+                il_unit,
+                il_quantity,
+                il_unit_price,
+                il_total
+            )
+            SELECT
+                $1,
+                'part',
+                st.st_id,
+                p.part_id,
+                p.part_name,
+                pb.pb_name,
+                p.unit,
+                rpi.rpi_quantity,
+                rpi.rpi_price,
+                (rpi.rpi_quantity * rpi.rpi_price)
+            FROM request_part_item rpi
+            INNER JOIN request_part rp ON rpi.rpi_request_part_id = rp.rp_id
+            INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
+            INNER JOIN part p ON rpi.rpi_part_id = p.part_id
+            LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
+            WHERE st.st_order_id = $2
+                AND st.st_sub_task_status_id = 3
+                AND rp.rp_req_part_status_id = 2;
+          `,
+          [invoiceId, order_id]
+        );
       }
 
       // 2. อัปเดตสถานะ orders ให้เป็น 4 (ส่งมอบรถคืนเรียบร้อย)
@@ -405,8 +478,8 @@ module.exports = {
     }
   },
 
-  // 7. สรุปรายงานรายได้ตามช่วงเวลา แนวโน้ม และรายการใบเสร็จรับเงิน
-  getRevenueReport: async ({ startDate, endDate, groupBy = "day" }) => {
+  // 7. สรุปรายงานรายได้ตามช่วงเวลา แนวโน้ม รายการใบเสร็จรับเงิน และยอดค้างรับ
+  getRevenueReport: async ({ startDate, endDate, groupBy = "day", status = "paid" }) => {
     let conn;
     try {
       conn = await pool.connect();
@@ -423,7 +496,7 @@ module.exports = {
         dateCondition += ` AND inv.i_paid_at <= $${params.length}`;
       }
 
-      // 1. สรุปภาพรวมยอดเงินตามช่วงเวลา
+      // 1. สรุปภาพรวมยอดเงินที่ชำระแล้วตามช่วงเวลา
       const summarySql = `
         SELECT 
             COALESCE(SUM(inv.i_total), 0)::FLOAT AS total_paid_amount,
@@ -438,6 +511,42 @@ module.exports = {
         WHERE ${dateCondition};
       `;
       const summaryRes = await conn.query(summarySql, params);
+
+      // 1.1 สรุปยอดค้างชำระ / ลูกหนี้การค้ารอเก็บเงิน (Pending Receivables)
+      const pendingSql = `
+        SELECT 
+            COALESCE(SUM(
+                COALESCE(inv.i_total, (calc.labor_cost + calc.parts_cost), 0)
+            ), 0)::FLOAT AS total_pending_amount,
+            COALESCE(COUNT(DISTINCT o.o_id), 0)::INT AS pending_count
+        FROM orders o
+        LEFT JOIN invoice inv ON o.o_id = inv.i_order_id AND inv.i_cancelled_at IS NULL
+        LEFT JOIN LATERAL (
+            SELECT 
+                COALESCE(SUM(st.st_labor_cost), 0)::FLOAT AS labor_cost,
+                COALESCE((
+                    SELECT SUM(p.part_price * rpi.rpi_quantity)
+                    FROM request_part rp
+                    JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
+                    JOIN part p ON rpi.rpi_part_id = p.part_id
+                    WHERE rp.rp_sub_task_id IN (SELECT st_id FROM sub_task WHERE st_order_id = o.o_id)
+                      AND (rp.rp_req_part_status_id = 2 OR rp.rp_req_part_status_id IS NULL)
+                      AND rp.rp_cancelled_at IS NULL
+                ), 0)::FLOAT AS parts_cost
+            FROM sub_task st
+            WHERE st.st_order_id = o.o_id
+        ) calc ON true
+        WHERE (inv.i_payment_status_id = 1) 
+           OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3));
+      `;
+      const pendingRes = await conn.query(pendingSql);
+      const pendingRow = pendingRes.rows[0] || { total_pending_amount: 0, pending_count: 0 };
+
+      const mergedSummary = {
+        ...(summaryRes.rows[0] || {}),
+        total_pending_amount: pendingRow.total_pending_amount || 0,
+        pending_count: pendingRow.pending_count || 0,
+      };
 
       // 2. ข้อมูลแนวโน้มรายได้ (Trends for Chart)
       const timeFormat = groupBy === "month" ? "YYYY-MM" : "YYYY-MM-DD";
@@ -455,39 +564,93 @@ module.exports = {
       `;
       const trendsRes = await conn.query(trendsSql, params);
 
-      // 3. รายการใบเสร็จรับเงินทั้งหมด (Detailed Transaction List)
-      const transactionsSql = `
-        SELECT 
-            inv.i_id AS invoice_id,
-            inv.i_order_id AS order_id,
-            inv.i_paid_at AS paid_at,
-            inv.i_total::FLOAT AS total_amount,
-            inv.i_labor_total::FLOAT AS labor_total,
-            inv.i_parts_total::FLOAT AS parts_total,
-            inv.i_payment_method_id AS payment_method_id,
-            COALESCE(pm.pm_name, 'ไม่ระบุ') AS payment_method_name,
-            inv.i_image_url AS invoice_image_url,
-            v.v_license_plate AS license_plate,
-            vb.vb_name AS brand_name,
-            vm.vm_name AS model_name,
-            CONCAT(c.cus_first_name, ' ', c.cus_last_name) AS customer_name,
-            c.cus_phone AS customer_phone
-        FROM invoice inv
-        JOIN orders o ON inv.i_order_id = o.o_id
-        JOIN vehicle v ON o.o_vehicle_id = v.v_id
-        JOIN customer c ON v.v_customer_id = c.cus_id
-        LEFT JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
-        LEFT JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
-        LEFT JOIN payment_method pm ON inv.i_payment_method_id = pm.pm_id
-        WHERE ${dateCondition}
-        ORDER BY inv.i_paid_at DESC;
-      `;
-      const transRes = await conn.query(transactionsSql, params);
+      // 3. รายการบิล: ชำระแล้ว (paid) หรือ รอชำระ (pending)
+      let transactionsSql = "";
+      let transParams = [];
+
+      if (status === "pending") {
+        transactionsSql = `
+          SELECT 
+              COALESCE(inv.i_id, 0) AS invoice_id,
+              o.o_id AS order_id,
+              COALESCE(inv.i_created_at, o.o_created_at)::text AS paid_at,
+              COALESCE(inv.i_total, (calc.labor_cost + calc.parts_cost), 0)::FLOAT AS total_amount,
+              COALESCE(inv.i_labor_total, calc.labor_cost, 0)::FLOAT AS labor_total,
+              COALESCE(inv.i_parts_total, calc.parts_cost, 0)::FLOAT AS parts_total,
+              COALESCE(inv.i_payment_method_id, 0) AS payment_method_id,
+              COALESCE(pm.pm_name, 'รอระบุ') AS payment_method_name,
+              inv.i_image_url AS invoice_image_url,
+              v.v_license_plate AS license_plate,
+              vb.vb_name AS brand_name,
+              vm.vm_name AS model_name,
+              CONCAT(c.cus_first_name, ' ', c.cus_last_name) AS customer_name,
+              c.cus_phone AS customer_phone,
+              COALESCE(inv.i_payment_status_id, 1) AS payment_status_id,
+              'รอชำระ' AS payment_status_name
+          FROM orders o
+          JOIN vehicle v ON o.o_vehicle_id = v.v_id
+          JOIN customer c ON v.v_customer_id = c.cus_id
+          LEFT JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
+          LEFT JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
+          LEFT JOIN invoice inv ON o.o_id = inv.i_order_id AND inv.i_cancelled_at IS NULL
+          LEFT JOIN payment_method pm ON inv.i_payment_method_id = pm.pm_id
+          LEFT JOIN LATERAL (
+              SELECT 
+                  COALESCE(SUM(st.st_labor_cost), 0)::FLOAT AS labor_cost,
+                  COALESCE((
+                      SELECT SUM(p.part_price * rpi.rpi_quantity)
+                      FROM request_part rp
+                      JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
+                      JOIN part p ON rpi.rpi_part_id = p.part_id
+                      WHERE rp.rp_sub_task_id IN (SELECT st_id FROM sub_task WHERE st_order_id = o.o_id)
+                        AND (rp.rp_req_part_status_id = 2 OR rp.rp_req_part_status_id IS NULL)
+                        AND rp.rp_cancelled_at IS NULL
+                  ), 0)::FLOAT AS parts_cost
+              FROM sub_task st
+              WHERE st.st_order_id = o.o_id
+          ) calc ON true
+          WHERE (inv.i_payment_status_id = 1) 
+             OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3))
+          ORDER BY o.o_created_at DESC;
+        `;
+      } else {
+        transactionsSql = `
+          SELECT 
+              inv.i_id AS invoice_id,
+              inv.i_order_id AS order_id,
+              inv.i_paid_at::text AS paid_at,
+              inv.i_total::FLOAT AS total_amount,
+              inv.i_labor_total::FLOAT AS labor_total,
+              inv.i_parts_total::FLOAT AS parts_total,
+              inv.i_payment_method_id AS payment_method_id,
+              COALESCE(pm.pm_name, 'ไม่ระบุ') AS payment_method_name,
+              inv.i_image_url AS invoice_image_url,
+              v.v_license_plate AS license_plate,
+              vb.vb_name AS brand_name,
+              vm.vm_name AS model_name,
+              CONCAT(c.cus_first_name, ' ', c.cus_last_name) AS customer_name,
+              c.cus_phone AS customer_phone,
+              2 AS payment_status_id,
+              'ชำระแล้ว' AS payment_status_name
+          FROM invoice inv
+          JOIN orders o ON inv.i_order_id = o.o_id
+          JOIN vehicle v ON o.o_vehicle_id = v.v_id
+          JOIN customer c ON v.v_customer_id = c.cus_id
+          LEFT JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
+          LEFT JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
+          LEFT JOIN payment_method pm ON inv.i_payment_method_id = pm.pm_id
+          WHERE ${dateCondition}
+          ORDER BY inv.i_paid_at DESC;
+        `;
+        transParams = params;
+      }
+
+      const transRes = await conn.query(transactionsSql, transParams);
 
       return {
         isError: false,
         data: {
-          summary: summaryRes.rows[0] || {},
+          summary: mergedSummary,
           trends: trendsRes.rows || [],
           transactions: transRes.rows || [],
         },
