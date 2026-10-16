@@ -92,13 +92,19 @@ module.exports = {
                     rp.rp_requested_at AS requested_at,
                     rp.rp_cancelled_at AS cancelled_at,
                     emp_c.emp_first_name || ' ' || emp_c.emp_last_name AS cancelled_by_name,
+                    rp.rp_received_at AS received_at,
+                    rp.rp_received_by_account_id AS received_by_account_id,
+                    emp_r.emp_first_name || ' ' || emp_r.emp_last_name AS received_by_name,
+                    rp.rp_receive_slip_image AS receive_slip_image,
+                    rp.rp_receive_note AS receive_note,
                     (rp.rp_requested_by_account_id = $2
                         AND rp.rp_req_part_status_id IN (1, 2)) AS can_cancel,
                     p.part_id,
                     p.part_name,
                     rpi.rpi_price AS part_price,
                     pb.pb_name AS part_brand,
-                    rpi.rpi_quantity AS quantity
+                    rpi.rpi_quantity AS quantity,
+                    COALESCE(rpi.rpi_received_quantity, 0) AS received_quantity
                 FROM request_part rp
                 INNER JOIN req_part_status rps ON rp.rp_req_part_status_id = rps.rps_id
                 INNER JOIN request_part_item rpi ON rpi.rpi_request_part_id = rp.rp_id
@@ -108,6 +114,8 @@ module.exports = {
                 LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
                 LEFT JOIN account acc_c ON rp.rp_cancelled_by_account_id = acc_c.acc_id
                 LEFT JOIN employee emp_c ON acc_c.acc_employee_id = emp_c.emp_id
+                LEFT JOIN account acc_r ON rp.rp_received_by_account_id = acc_r.acc_id
+                LEFT JOIN employee emp_r ON acc_r.acc_employee_id = emp_r.emp_id
                 WHERE rp.rp_sub_task_id = $1
                 ORDER BY rp.rp_id DESC;
             `;
@@ -162,7 +170,13 @@ module.exports = {
                     p.part_url,
                     pb.pb_name AS part_brand,
                     rpi.rpi_quantity AS quantity,
-                    rpi.rpi_price AS price
+                    rpi.rpi_price AS price,
+                    COALESCE(rpi.rpi_received_quantity, 0) AS received_quantity,
+                    rp.rp_received_at AS received_at,
+                    rp.rp_received_by_account_id AS received_by_account_id,
+                    emp_r.emp_first_name || ' ' || emp_r.emp_last_name AS received_by_name,
+                    rp.rp_receive_slip_image AS receive_slip_image,
+                    rp.rp_receive_note AS receive_note
                 FROM request_part rp
                 INNER JOIN req_part_status rps ON rp.rp_req_part_status_id = rps.rps_id
                 INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
@@ -177,6 +191,8 @@ module.exports = {
                 LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
                 LEFT JOIN account acc ON rp.rp_requested_by_account_id = acc.acc_id
                 LEFT JOIN employee emp ON acc.acc_employee_id = emp.emp_id
+                LEFT JOIN account acc_r ON rp.rp_received_by_account_id = acc_r.acc_id
+                LEFT JOIN employee emp_r ON acc_r.acc_employee_id = emp_r.emp_id
                 WHERE rp.rp_req_part_status_id = $1
                 ORDER BY rp.rp_id DESC, rpi.rpi_id ASC;
             `;
@@ -465,6 +481,112 @@ module.exports = {
         } finally {
             if (conn)
                 conn.release();
+        }
+
+        return result;
+    },
+
+    receiveRequestPart: async ({ requestPartId, accountId, items, receiveSlipImage, note }) => {
+        let conn;
+        let result;
+
+        try {
+            conn = await pool.connect();
+            await conn.query('BEGIN');
+
+            const checkSql = `
+                SELECT rp_req_part_status_id
+                FROM request_part
+                WHERE rp_id = $1
+                FOR UPDATE;
+            `;
+            const checkRes = await conn.query(checkSql, [requestPartId]);
+
+            if (checkRes.rows.length === 0) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ไม่พบใบเบิกที่ระบุ"
+                };
+            }
+
+            const currentStatus = checkRes.rows[0].rp_req_part_status_id;
+            // ตรวจรับได้เมื่อสถานะเป็น "อนุมัติแล้ว" (2) หรือ "ได้รับบางส่วน" (6)
+            if (currentStatus !== 2 && currentStatus !== 6) {
+                await conn.query('ROLLBACK');
+                return {
+                    isError: true,
+                    data: null,
+                    errorMessage: "ใบเบิกนี้ไม่อยู่ในสถานะที่สามารถตรวจรับได้ (ต้องเป็นสถานะอนุมัติแล้ว หรือ ได้รับบางส่วน)"
+                };
+            }
+
+            // อัปเดตจำนวนที่ได้รับจริงของแต่ละชิ้น
+            if (items && Array.isArray(items) && items.length > 0) {
+                for (const item of items) {
+                    const partId = item.part_id;
+                    const recQty = parseInt(item.received_quantity, 10);
+                    if (partId != null && !isNaN(recQty)) {
+                        await conn.query(`
+                            UPDATE request_part_item
+                            SET rpi_received_quantity = $1
+                            WHERE rpi_request_part_id = $2 AND rpi_part_id = $3
+                        `, [recQty, requestPartId, partId]);
+                    }
+                }
+            } else {
+                // หากไม่ได้ส่ง items มา ให้ตั้งค่าจำนวนที่ได้รับจริง = จำนวนที่ขอเบิก
+                await conn.query(`
+                    UPDATE request_part_item
+                    SET rpi_received_quantity = rpi_quantity
+                    WHERE rpi_request_part_id = $1
+                `, [requestPartId]);
+            }
+
+            // ตรวจสอบว่าได้รับครบทุกชิ้นหรือไม่
+            const checkItemsSql = `
+                SELECT 
+                    COUNT(*) AS total_items,
+                    COUNT(*) FILTER (WHERE COALESCE(rpi_received_quantity, 0) >= rpi_quantity) AS complete_items
+                FROM request_part_item
+                WHERE rpi_request_part_id = $1;
+            `;
+            const checkItemsRes = await conn.query(checkItemsSql, [requestPartId]);
+            const totalItems = parseInt(checkItemsRes.rows[0].total_items, 10);
+            const completeItems = parseInt(checkItemsRes.rows[0].complete_items, 10);
+
+            // ถ้า complete_items === totalItems แสดงว่าได้รับครบทุกชิ้น -> สถานะ 5 (ได้รับอะไหล่แล้ว)
+            // ถ้า complete_items < totalItems แสดงว่ายังได้ไม่ครบ -> สถานะ 6 (ได้รับบางส่วน)
+            const targetStatus = (totalItems > 0 && completeItems === totalItems) ? 5 : 6;
+
+            const updateRpSql = `
+                UPDATE request_part
+                SET rp_req_part_status_id = $1,
+                    rp_received_at = CURRENT_TIMESTAMP,
+                    rp_received_by_account_id = $2,
+                    rp_receive_slip_image = COALESCE($3, rp_receive_slip_image),
+                    rp_receive_note = COALESCE($4, rp_receive_note)
+                WHERE rp_id = $5;
+            `;
+            await conn.query(updateRpSql, [targetStatus, accountId, receiveSlipImage || null, note || null, requestPartId]);
+
+            await conn.query('COMMIT');
+
+            result = {
+                isError: false,
+                data: "ตรวจรับอะไหล่เรียบร้อยแล้ว",
+                errorMessage: ""
+            };
+        } catch (error) {
+            if (conn) await conn.query('ROLLBACK');
+            result = {
+                isError: true,
+                data: null,
+                errorMessage: error.message
+            };
+        } finally {
+            if (conn) conn.release();
         }
 
         return result;

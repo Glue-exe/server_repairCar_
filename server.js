@@ -34,6 +34,7 @@ const priorityModel = require("./models/priority.js");
 const orderStatusModel = require("./models/order_status.js");
 const salaryHistoryModel = require("./models/salary_history.js");
 const accountantModel = require("./models/accountant.js");
+const payrollModel = require("./models/payroll.js");
 
 const app = express();
 
@@ -68,6 +69,7 @@ const uploadInvoice = makeUpload("invoice");
 const uploadService = makeUpload("service");
 const uploadShopQr = makeUpload("shop_qr");
 const uploadSlip = makeUpload("slip");
+const uploadPartReceive = makeUpload("part_receive");
 
 // ห่อ multer ให้คืน envelope แทนการโยน error ออกไป
 const runImageUpload = (uploadMiddleware) => {
@@ -758,6 +760,36 @@ app.post("/api/request_part/cancel", checkAccessToken, async (req, res) => {
   res.json(response);
 });
 
+app.post(
+  "/api/request_part/receive",
+  checkAccessToken,
+  runImageUpload(uploadPartReceive.single("file")),
+  async (req, res) => {
+    const requestPartId = parseInt(req.body.request_part_id, 10);
+    const note = req.body.note || "";
+    let items = [];
+    if (req.body.items) {
+      try {
+        items =
+          typeof req.body.items === "string"
+            ? JSON.parse(req.body.items)
+            : req.body.items;
+      } catch (_) {
+        items = [];
+      }
+    }
+    const receiveSlipImage = req.file ? req.file.filename : null;
+    const response = await partRequisitionModel.receiveRequestPart({
+      requestPartId,
+      accountId: req.user.user_id,
+      items,
+      receiveSlipImage,
+      note,
+    });
+    res.json(response);
+  },
+);
+
 app.get("/api/payment_methods", checkAccessToken, async (req, res) => {
   const response = await paymentMethodModel.getPaymentMethod();
   res.json(response);
@@ -859,6 +891,44 @@ app.get("/api/salary_history", checkAccessToken, async (req, res) => {
 
 app.put("/api/salary_history", checkAccessToken, async (req, res) => {
   const response = await salaryHistoryModel.putUpdateSalary(req.body);
+  res.json(response);
+});
+
+// ----- Monthly Technician Payroll Endpoints -----
+app.get("/api/payroll/monthly", checkAccessToken, async (req, res) => {
+  const { month, role_id } = req.query;
+  const response = await payrollModel.getMonthlyPayroll({ month, role_id });
+  res.json(response);
+});
+
+app.post(
+  "/api/payroll/pay",
+  checkAccessToken,
+  runImageUpload(uploadSlip.single("file")),
+  async (req, res) => {
+    const account_id = req.user?.user_id || req.user?.account_id || 1;
+    const emp_id = parseInt(req.body.emp_id, 10);
+    const salary_amount = parseFloat(req.body.salary_amount || 0);
+    const effective_date = req.body.effective_date;
+    const payment_method_id = parseInt(req.body.payment_method_id || 1, 10);
+    const slip_image = req.file ? req.file.filename : (req.body.slip_image || null);
+
+    const response = await payrollModel.paySalary({
+      emp_id,
+      salary_amount,
+      effective_date,
+      payment_method_id,
+      slip_image,
+      account_id,
+    });
+
+    res.json(response);
+  }
+);
+
+app.get("/api/payroll/history/:emp_id", checkAccessToken, async (req, res) => {
+  const empId = parseInt(req.params.emp_id, 10);
+  const response = await payrollModel.getEmployeeSalaryHistory(empId);
   res.json(response);
 });
 
