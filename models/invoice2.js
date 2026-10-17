@@ -39,11 +39,101 @@ module.exports = {
             const invoiceRes = await conn.query(invoiceSql, [orderId]);
 
             if (invoiceRes.rows.length === 0) {
-                result = {
-                    isError: false,
-                    data: null,
-                    errorMessage: "",
-                };
+                // ตรวจสอบว่ามี order อยู่จริงหรือไม่ และดึงข้อมูลสังเคราะห์สำหรับ Preview บิล
+                const orderSql = `
+                    SELECT
+                        0 AS id,
+                        o.o_id AS order_id,
+                        0.00::FLOAT AS parts_total,
+                        0.00::FLOAT AS labor_total,
+                        0.00::FLOAT AS total,
+                        NULL::INT AS payment_method_id,
+                        'ยังไม่ระบุ' AS payment_method,
+                        1 AS payment_status_id,
+                        'รอชำระเงิน' AS payment_status,
+                        o.o_created_at AS created_at,
+                        NULL AS image_url,
+                        CONCAT(COALESCE(t.t_name, ''), c.cus_first_name, ' ', c.cus_last_name) AS customer_name,
+                        c.cus_phone AS customer_phone,
+                        v.v_license_plate AS license_plate,
+                        CONCAT(vb.vb_name, ' ', vm.vm_name) AS vehicle_name
+                    FROM orders o
+                    INNER JOIN vehicle v ON o.o_vehicle_id = v.v_id
+                    INNER JOIN vehicle_model vm ON v.v_vehicle_model_id = vm.vm_id
+                    INNER JOIN vehicle_brand vb ON vm.vm_brand_id = vb.vb_id
+                    INNER JOIN customer c ON v.v_customer_id = c.cus_id
+                    LEFT JOIN title t ON c.cus_title_id = t.t_id
+                    WHERE o.o_id = $1;
+                `;
+                const orderRes = await conn.query(orderSql, [orderId]);
+
+                if (orderRes.rows.length === 0) {
+                    result = {
+                        isError: false,
+                        data: null,
+                        errorMessage: "",
+                    };
+                } else {
+                    const invoice = orderRes.rows[0];
+
+                    const laborRes = await conn.query(
+                        `
+                            SELECT
+                                'labor' AS type,
+                                st_id AS sub_task_id,
+                                NULL::INT AS part_id,
+                                st_name AS name,
+                                NULL::VARCHAR AS brand,
+                                NULL::VARCHAR AS unit,
+                                1 AS quantity,
+                                st_labor_cost::FLOAT AS unit_price,
+                                st_labor_cost::FLOAT AS total
+                            FROM sub_task
+                            WHERE st_order_id = $1 AND st_sub_task_status_id = 3
+                            ORDER BY st_id ASC;
+                        `,
+                        [orderId]
+                    );
+
+                    const partsRes = await conn.query(
+                        `
+                            SELECT
+                                'part' AS type,
+                                st.st_id AS sub_task_id,
+                                p.part_id AS part_id,
+                                p.part_name AS name,
+                                pb.pb_name AS brand,
+                                p.unit AS unit,
+                                rpi.rpi_quantity AS quantity,
+                                rpi.rpi_price::FLOAT AS unit_price,
+                                (rpi.rpi_quantity * rpi.rpi_price)::FLOAT AS total
+                            FROM request_part_item rpi
+                            INNER JOIN request_part rp ON rpi.rpi_request_part_id = rp.rp_id
+                            INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
+                            INNER JOIN part p ON rpi.rpi_part_id = p.part_id
+                            LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
+                            WHERE st.st_order_id = $1
+                                AND st.st_sub_task_status_id = 3
+                                AND rp.rp_req_part_status_id IN (2, 5, 6)
+                            ORDER BY rpi.rpi_id ASC;
+                        `,
+                        [orderId]
+                    );
+
+                    invoice.lines = [...laborRes.rows, ...partsRes.rows];
+
+                    const laborTotal = laborRes.rows.reduce((sum, l) => sum + l.total, 0);
+                    const partsTotal = partsRes.rows.reduce((sum, p) => sum + p.total, 0);
+                    invoice.labor_total = laborTotal;
+                    invoice.parts_total = partsTotal;
+                    invoice.total = laborTotal + partsTotal;
+
+                    result = {
+                        isError: false,
+                        data: invoice,
+                        errorMessage: "",
+                    };
+                }
             } else {
                 const invoice = invoiceRes.rows[0];
 
@@ -66,7 +156,62 @@ module.exports = {
                     [invoice.id]
                 );
 
-                invoice.lines = lineRes.rows;
+                if (lineRes.rows.length === 0) {
+                    const laborRes = await conn.query(
+                        `
+                            SELECT
+                                'labor' AS type,
+                                st_id AS sub_task_id,
+                                NULL::INT AS part_id,
+                                st_name AS name,
+                                NULL::VARCHAR AS brand,
+                                NULL::VARCHAR AS unit,
+                                1 AS quantity,
+                                st_labor_cost::FLOAT AS unit_price,
+                                st_labor_cost::FLOAT AS total
+                            FROM sub_task
+                            WHERE st_order_id = $1 AND st_sub_task_status_id = 3
+                            ORDER BY st_id ASC;
+                        `,
+                        [orderId]
+                    );
+
+                    const partsRes = await conn.query(
+                        `
+                            SELECT
+                                'part' AS type,
+                                st.st_id AS sub_task_id,
+                                p.part_id AS part_id,
+                                p.part_name AS name,
+                                pb.pb_name AS brand,
+                                p.unit AS unit,
+                                rpi.rpi_quantity AS quantity,
+                                rpi.rpi_price::FLOAT AS unit_price,
+                                (rpi.rpi_quantity * rpi.rpi_price)::FLOAT AS total
+                            FROM request_part_item rpi
+                            INNER JOIN request_part rp ON rpi.rpi_request_part_id = rp.rp_id
+                            INNER JOIN sub_task st ON rp.rp_sub_task_id = st.st_id
+                            INNER JOIN part p ON rpi.rpi_part_id = p.part_id
+                            LEFT JOIN part_brand pb ON p.part_brand_id = pb.pb_id
+                            WHERE st.st_order_id = $1
+                                AND st.st_sub_task_status_id = 3
+                                AND rp.rp_req_part_status_id IN (2, 5, 6)
+                            ORDER BY rpi.rpi_id ASC;
+                        `,
+                        [orderId]
+                    );
+
+                    invoice.lines = [...laborRes.rows, ...partsRes.rows];
+                    if (invoice.total === 0) {
+                        const laborTotal = laborRes.rows.reduce((sum, l) => sum + l.total, 0);
+                        const partsTotal = partsRes.rows.reduce((sum, p) => sum + p.total, 0);
+                        invoice.labor_total = laborTotal;
+                        invoice.parts_total = partsTotal;
+                        invoice.total = laborTotal + partsTotal;
+                    }
+                } else {
+                    invoice.lines = lineRes.rows;
+                }
 
                 result = {
                     isError: false,
