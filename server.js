@@ -67,7 +67,7 @@ const uploadOrder = makeUpload("order");
 const uploadPart = makeUpload("part");
 const uploadInvoice = makeUpload("invoice");
 const uploadService = makeUpload("service");
-const uploadShopQr = makeUpload("shop_qr");
+const uploadQrimg = makeUpload("qr_img");
 const uploadSlip = makeUpload("slip");
 const uploadPartReceive = makeUpload("part_receive");
 
@@ -988,16 +988,16 @@ app.get("/api/accountant/payment_methods", checkAccessToken, async (req, res) =>
 });
 
 // ดึงภาพ QR Code ของร้านค้า
-app.get("/api/accountant/shop_qr", checkAccessToken, async (req, res) => {
-  const response = await accountantModel.getShopQr();
+app.get(["/api/accountant/qr_img", "/api/accountant/shop_qr"], checkAccessToken, async (req, res) => {
+  const response = await accountantModel.getQrimg();
   res.json(response);
 });
 
 // อัปโหลด / แก้ไข QR Code ของร้านค้า
 app.post(
-  "/api/accountant/shop_qr",
+  ["/api/accountant/qr_img", "/api/accountant/shop_qr"],
   checkAccessToken,
-  runImageUpload(uploadShopQr.single("file")),
+  runImageUpload(uploadQrimg.single("file")),
   async (req, res) => {
     if (!req.file) {
       return res.json({
@@ -1007,13 +1007,13 @@ app.post(
       });
     }
 
-    const response = await accountantModel.updateShopQr(req.file.filename);
+    const response = await accountantModel.updateQrimg(req.file.filename);
     if (response.isError) {
       fs.unlink(path.join("uploads", req.file.filename), () => {});
     } else if (
       response.data &&
       response.data.old_qr_image &&
-      response.data.old_qr_image !== "shop_qr_default.png"
+      response.data.old_qr_image !== ""
     ) {
       fs.unlink(path.join("uploads", response.data.old_qr_image), () => {});
     }

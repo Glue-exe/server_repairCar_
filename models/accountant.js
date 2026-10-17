@@ -17,7 +17,7 @@ module.exports = {
                     SELECT 
                         COALESCE(SUM(st.st_labor_cost), 0) + 
                         COALESCE((
-                            SELECT SUM(p.part_price * rpi.rpi_quantity)
+                            SELECT SUM(COALESCE(rpi.rpi_price, p.part_price) * rpi.rpi_quantity)
                             FROM request_part rp
                             JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                             JOIN part p ON rpi.rpi_part_id = p.part_id
@@ -28,17 +28,17 @@ module.exports = {
                     FROM sub_task st
                     WHERE st.st_order_id = o.o_id
                 ) calc ON true
-                WHERE (inv.i_payment_status_id = 1) 
-                   OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3))
+                WHERE o.o_order_status_id = 3
+                  AND ((inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR inv.i_id IS NULL)
             ), 0)::FLOAT AS "totalPendingAmount",
 
-            -- จำนวนรายการที่รอชำระ
+            -- จำนวนรายการที่รอชำระ (เฉพาะงานที่ซ่อมเสร็จสิ้นแล้ว o_order_status_id = 3)
             COALESCE((
                 SELECT COUNT(DISTINCT o.o_id)::INT
                 FROM orders o
                 LEFT JOIN invoice inv ON o.o_id = inv.i_order_id AND inv.i_cancelled_at IS NULL
-                WHERE (inv.i_payment_status_id = 1) 
-                   OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3))
+                WHERE o.o_order_status_id = 3
+                  AND ((inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR inv.i_id IS NULL)
             ), 0)::INT AS "pendingCount",
 
             -- ยอดเงินที่ชำระแล้วเดือนนี้ (Paid & Delivered)
@@ -97,9 +97,9 @@ module.exports = {
         // ชำระแล้ว
         conditions.push("inv.i_payment_status_id = 2 AND inv.i_cancelled_at IS NULL");
       } else {
-        // รอชำระ: มี invoice สถานะ 1 หรือยังไม่มี invoice แต่งานอยู่ในสถานะกำลังซ่อม/ซ่อมเสร็จสิ้น (order_status_id IN (2, 3))
+        // รอชำระ: เฉพาะงานที่ซ่อมเสร็จสิ้นแล้ว (o_order_status_id = 3) เท่านั้น และยังไม่ชำระเงิน
         conditions.push(
-          "(inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3))"
+          "o.o_order_status_id = 3 AND ((inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR inv.i_id IS NULL)"
         );
       }
 
@@ -169,7 +169,7 @@ module.exports = {
               SELECT 
                   COALESCE(SUM(st.st_labor_cost), 0)::FLOAT AS labor_cost,
                   COALESCE((
-                      SELECT SUM(p.part_price * rpi.rpi_quantity)::FLOAT
+                      SELECT SUM(COALESCE(rpi.rpi_price, p.part_price) * rpi.rpi_quantity)::FLOAT
                       FROM request_part rp
                       JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                       JOIN part p ON rpi.rpi_part_id = p.part_id
@@ -214,6 +214,28 @@ module.exports = {
     try {
       conn = await pool.connect();
       await conn.query("BEGIN");
+
+      // 0. ตรวจสอบสถานะ Order ต้องเป็น 3 (ซ่อมเสร็จสิ้น) เท่านั้น จึงจะสามารถชำระเงินได้
+      const orderCheck = await conn.query(
+        "SELECT o_id, o_order_status_id FROM orders WHERE o_id = $1 FOR UPDATE;",
+        [order_id]
+      );
+      if (orderCheck.rows.length === 0) {
+        await conn.query("ROLLBACK");
+        return {
+          isError: true,
+          data: null,
+          errorMessage: "ไม่พบใบสั่งซ่อมที่ระบุ",
+        };
+      }
+      if (orderCheck.rows[0].o_order_status_id !== 3) {
+        await conn.query("ROLLBACK");
+        return {
+          isError: true,
+          data: null,
+          errorMessage: "ใบสั่งซ่อมต้องอยู่ในสถานะ 'ซ่อมเสร็จสิ้น' เท่านั้น จึงจะสามารถทำรายการชำระเงินได้",
+        };
+      }
 
       // 1. ตรวจสอบว่ามี invoice อยู่แล้วหรือไม่
       const checkInvSql = `SELECT i_id, i_parts_total, i_labor_total, i_total, i_image_url FROM invoice WHERE i_order_id = $1 AND i_cancelled_at IS NULL LIMIT 1;`;
@@ -410,28 +432,29 @@ module.exports = {
   },
 
   // 5. ดึงภาพ QR Code ของร้านค้า
-  getShopQr: async () => {
+  getQrimg: async () => {
     let conn;
     try {
       conn = await pool.connect();
-      const sql = `SELECT setting_value FROM shop_setting WHERE setting_key = 'shop_qr_code' LIMIT 1;`;
+      const sql = `SELECT qr_id, qr_img FROM qr_img_setting LIMIT 1;`;
       const { rows } = await conn.query(sql);
       const qrImage =
-        rows.length > 0 && rows[0].setting_value
-          ? rows[0].setting_value
-          : "shop_qr_default.png";
+        rows.length > 0 && rows[0].qr_img
+          ? rows[0].qr_img
+          : "";
       return {
         isError: false,
         data: {
           qr_image: qrImage,
+          qr_img: qrImage,
         },
         errorMessage: "",
       };
     } catch (error) {
-      console.error("Database Error in getShopQr:", error);
+      console.error("Database Error in getQrimg:", error);
       return {
         isError: true,
-        data: { qr_image: "shop_qr_default.png" },
+        data: { qr_image: "", qr_img: "" },
         errorMessage: error.message,
       };
     } finally {
@@ -439,35 +462,43 @@ module.exports = {
     }
   },
 
+  // Alias สำหรับ getShopQr
+  getShopQr: async function () {
+    return module.exports.getQrimg();
+  },
+
   // 6. บันทึก / อัปเดตภาพ QR Code ของร้านค้า
-  updateShopQr: async (filename) => {
+  updateQrimg: async (filename) => {
     let conn;
     try {
       conn = await pool.connect();
       const oldRes = await conn.query(
-        `SELECT setting_value FROM shop_setting WHERE setting_key = 'shop_qr_code' LIMIT 1;`
+        `SELECT qr_id, qr_img FROM qr_img_setting LIMIT 1;`
       );
       const oldQr =
-        oldRes.rows.length > 0 ? oldRes.rows[0].setting_value : null;
+        oldRes.rows.length > 0 ? oldRes.rows[0].qr_img : null;
+      const targetId =
+        oldRes.rows.length > 0 ? oldRes.rows[0].qr_id : "shop_qr_code";
 
       const sql = `
-        INSERT INTO shop_setting (setting_key, setting_value, updated_at)
-        VALUES ('shop_qr_code', $1, CURRENT_TIMESTAMP)
-        ON CONFLICT (setting_key) DO UPDATE
-        SET setting_value = EXCLUDED.setting_value, updated_at = CURRENT_TIMESTAMP
-        RETURNING setting_value;
+        INSERT INTO qr_img_setting (qr_id, qr_img, updated_at)
+        VALUES ($1, $2, CURRENT_TIMESTAMP)
+        ON CONFLICT (qr_id) DO UPDATE
+        SET qr_img = EXCLUDED.qr_img, updated_at = CURRENT_TIMESTAMP
+        RETURNING qr_img;
       `;
-      await conn.query(sql, [filename]);
+      await conn.query(sql, [targetId, filename]);
       return {
         isError: false,
         data: {
           qr_image: filename,
+          qr_img: filename,
           old_qr_image: oldQr,
         },
         errorMessage: "",
       };
     } catch (error) {
-      console.error("Database Error in updateShopQr:", error);
+      console.error("Database Error in updateQrimg:", error);
       return {
         isError: true,
         data: null,
@@ -476,6 +507,11 @@ module.exports = {
     } finally {
       if (conn) conn.release();
     }
+  },
+
+  // Alias สำหรับ updateShopQr
+  updateShopQr: async function (filename) {
+    return module.exports.updateQrimg(filename);
   },
 
   // 7. สรุปรายงานรายได้ตามช่วงเวลา แนวโน้ม รายการใบเสร็จรับเงิน และยอดค้างรับ
@@ -525,7 +561,7 @@ module.exports = {
             SELECT 
                 COALESCE(SUM(st.st_labor_cost), 0)::FLOAT AS labor_cost,
                 COALESCE((
-                    SELECT SUM(p.part_price * rpi.rpi_quantity)
+                    SELECT SUM(COALESCE(rpi.rpi_price, p.part_price) * rpi.rpi_quantity)
                     FROM request_part rp
                     JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                     JOIN part p ON rpi.rpi_part_id = p.part_id
@@ -536,8 +572,8 @@ module.exports = {
             FROM sub_task st
             WHERE st.st_order_id = o.o_id
         ) calc ON true
-        WHERE (inv.i_payment_status_id = 1) 
-           OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3));
+        WHERE o.o_order_status_id = 3
+          AND ((inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR inv.i_id IS NULL);
       `;
       const pendingRes = await conn.query(pendingSql);
       const pendingRow = pendingRes.rows[0] || { total_pending_amount: 0, pending_count: 0 };
@@ -598,7 +634,7 @@ module.exports = {
               SELECT 
                   COALESCE(SUM(st.st_labor_cost), 0)::FLOAT AS labor_cost,
                   COALESCE((
-                      SELECT SUM(p.part_price * rpi.rpi_quantity)
+                      SELECT SUM(COALESCE(rpi.rpi_price, p.part_price) * rpi.rpi_quantity)
                       FROM request_part rp
                       JOIN request_part_item rpi ON rp.rp_id = rpi.rpi_request_part_id
                       JOIN part p ON rpi.rpi_part_id = p.part_id
@@ -609,8 +645,8 @@ module.exports = {
               FROM sub_task st
               WHERE st.st_order_id = o.o_id
           ) calc ON true
-          WHERE (inv.i_payment_status_id = 1) 
-             OR (inv.i_id IS NULL AND o.o_order_status_id IN (2, 3))
+          WHERE o.o_order_status_id = 3
+            AND ((inv.i_payment_status_id = 1 AND inv.i_cancelled_at IS NULL) OR inv.i_id IS NULL)
           ORDER BY o.o_created_at DESC;
         `;
       } else {
